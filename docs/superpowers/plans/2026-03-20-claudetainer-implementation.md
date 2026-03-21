@@ -681,13 +681,7 @@ WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 ```
 
-- [ ] **Step 2: Build locally to verify**
-
-```bash
-docker build -t claudetainer:test .
-```
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
 git add Dockerfile
