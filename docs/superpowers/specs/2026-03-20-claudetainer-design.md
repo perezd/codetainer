@@ -343,7 +343,16 @@ Installed at first boot by the entrypoint script via `claude plugin install supe
 | `ANTHROPIC_API_KEY` | Held by sidecar only, never exposed to Claude |
 | `GH_PAT` | Git HTTPS auth, gh CLI, GitHub MCP server — all via root-owned config, never in Claude's environment |
 
-**GitHub PAT scope:** The PAT must be scoped to the minimum necessary permissions: `repo` access limited to specific repositories only, no `gist` scope, no `admin` scope, no `delete_repo` scope, no `workflow` scope. The robot account should not have admin access to any organization or repository.
+**GitHub PAT scope:** Use a **fine-grained personal access token** (not classic) scoped to specific repositories only:
+
+| Permission | Access Level | Purpose |
+|-----------|-------------|---------|
+| Contents | Read & Write | Clone, pull, push commits |
+| Pull requests | Read & Write | Create and read PRs |
+| Issues | Read & Write | Create issues, comment |
+| Metadata | Read (always included) | Basic repo info |
+
+**Permissions explicitly excluded:** Administration, Actions/Workflows, Packages, Pages, Secrets, Environments, Deployments. Fine-grained PATs **cannot create gists** (gists require classic tokens), which eliminates that exfiltration vector entirely. The token is scoped to specific repositories in the robot account's org — it cannot access other repos even if Claude crafts a `git remote add` to a different repo.
 
 ### Environment Variables (via `fly machine run --env`)
 
