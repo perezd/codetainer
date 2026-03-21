@@ -424,18 +424,27 @@ tmux is configured with `remain-on-exit on`. The pane stays alive showing exit s
 
 GHCR authentication uses the built-in `GITHUB_TOKEN` provided by GitHub Actions — no additional secrets needed.
 
-Fly.io deployment is done manually via `fly deploy --image ghcr.io/<org>/claudetainer:latest`. This keeps CI simple and avoids storing `FLY_API_TOKEN` in GitHub.
+Fly.io deployment is done manually — no `fly.toml` needed:
 
-### Fly Configuration
+```bash
+fly machine run ghcr.io/<org>/claudetainer:latest \
+  --app claudetainer \
+  --region sjc \
+  --vm-memory 1024 \
+  --vm-size shared-cpu-1x \
+  --env GIT_USER_NAME=claudetainer-bot \
+  --env GIT_USER_EMAIL=claudetainer@noreply.github.com
+```
 
-`fly.toml` in the repo root defines the app name, region, and machine configuration.
+To auto-clone a repo at startup, add `--env REPO_URL=https://github.com/your-org/your-repo`.
+
+Secrets (`GH_PAT`) are set once via `fly secrets set` on the app and automatically available to all machines.
 
 ## Project File Structure
 
 ```
 claudetainer/
 ├── Dockerfile
-├── fly.toml
 ├── .github/
 │   └── workflows/
 │       └── build.yml
@@ -456,7 +465,6 @@ claudetainer/
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Image build: Bun, Python, CLI tools, Claude Code, non-root user, read-only FS |
-| `fly.toml` | Fly app config: app name, region, machine size, no exposed ports |
 | `build.yml` | GitHub Action: build → push to GHCR |
 | `entrypoint.sh` | Container startup: network lockdown, git config, approval daemon, tmux |
 | `check-command.sh` | PreToolUse hook: reads rules.conf, splits compounds, enforces tiers |

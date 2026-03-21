@@ -17,7 +17,6 @@
 ```
 claudetainer/
 ├── Dockerfile
-├── fly.toml
 ├── .github/workflows/build.yml
 ├── entrypoint.sh
 ├── approval/
@@ -690,30 +689,12 @@ git commit -m "feat: add Dockerfile with all security layers"
 
 ---
 
-### Task 7: Fly.io Config & GitHub Actions
+### Task 7: GitHub Actions
 
 **Files:**
-- Create: `fly.toml`
 - Create: `.github/workflows/build.yml`
 
-- [ ] **Step 1: Create `fly.toml`**
-
-```toml
-app = "claudetainer"
-primary_region = "sjc"
-
-[build]
-  dockerfile = "Dockerfile"
-
-[vm]
-  size = "shared-cpu-1x"
-  memory = 1024
-
-# No [services] block — no ports exposed to the internet.
-# Access only via: fly ssh console
-```
-
-- [ ] **Step 2: Create `.github/workflows/build.yml`**
+- [ ] **Step 1: Create `.github/workflows/build.yml`**
 
 ```yaml
 name: Build and Push
@@ -745,11 +726,11 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:latest
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
-git add fly.toml .github/workflows/build.yml
-git commit -m "feat: add fly.toml and GitHub Actions build workflow"
+git add .github/workflows/build.yml
+git commit -m "feat: add GitHub Actions build workflow for GHCR"
 ```
 
 ---
@@ -770,10 +751,14 @@ fly apps create claudetainer
 fly secrets set GH_PAT=<your-fine-grained-pat>
 ```
 
-- [ ] **Step 3: Deploy**
+- [ ] **Step 3: Run the machine**
 
 ```bash
-fly deploy \
+fly machine run ghcr.io/<org>/claudetainer:latest \
+  --app claudetainer \
+  --region sjc \
+  --vm-memory 1024 \
+  --vm-size shared-cpu-1x \
   --env GIT_USER_NAME=claudetainer-bot \
   --env GIT_USER_EMAIL=claudetainer@noreply.github.com
 ```
@@ -781,7 +766,11 @@ fly deploy \
 Optionally, to auto-clone a repo on start:
 
 ```bash
-fly deploy \
+fly machine run ghcr.io/<org>/claudetainer:latest \
+  --app claudetainer \
+  --region sjc \
+  --vm-memory 1024 \
+  --vm-size shared-cpu-1x \
   --env GIT_USER_NAME=claudetainer-bot \
   --env GIT_USER_EMAIL=claudetainer@noreply.github.com \
   --env REPO_URL=https://github.com/your-org/your-repo
