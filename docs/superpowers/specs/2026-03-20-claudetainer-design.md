@@ -53,7 +53,9 @@ A Docker container deployed to Fly.io that provides a persistent, interactive Cl
 
 The base image is **read-only**. Claude runs as an unprivileged user with all capabilities dropped. This makes every other security layer tamper-proof — Claude cannot modify hook scripts, rules, settings, or network configuration.
 
-**Read-only root filesystem** with scoped writable mounts:
+**Fly.io note:** Fly Machines are Firecracker VMs, not Docker containers. Docker security flags (`--cap-drop`, `--tmpfs`, `--read-only`, `--security-opt`) don't apply. All hardening is implemented by the entrypoint script itself, which runs as root before dropping to the `claude` user.
+
+**Read-only root filesystem** with scoped writable tmpfs mounts. The entrypoint mounts tmpfs at each writable path and then remounts the root filesystem as read-only (`mount -o remount,ro /`):
 
 | Mount | Type | Purpose |
 |-------|------|---------|
@@ -62,18 +64,18 @@ The base image is **read-only**. Claude runs as an unprivileged user with all ca
 | `/home/claude/.cache` | tmpfs (256MB) | Build caches (Bun, pip, etc.) |
 | `/home/claude/.claude` | tmpfs (64MB) | Claude Code config (settings.json, populated at boot) |
 
-tmpfs is backed by RAM. Total addressable tmpfs is ~960MB, but only consumes RAM for data actually written. On a 1GB machine this leaves headroom for system processes, sidecar, and Claude Code. For larger projects, increase machine RAM to 2GB and scale tmpfs sizes accordingly.
+tmpfs is backed by RAM. Total addressable tmpfs is ~960MB, but only consumes RAM for data actually written. On a 1GB machine this leaves headroom for system processes and Claude Code. For larger projects, increase machine RAM to 2GB and scale tmpfs sizes accordingly.
 
 Everything else (system binaries, hook scripts, rules.conf, the `approve` binary) is immutable at runtime. The settings.json copy on the `/home/claude/.claude` tmpfs is root-owned (mode 644) — Claude can read it but not modify it.
 
 **User and capabilities:**
 
 - Claude runs as user `claude` (UID 1000), not root
-- `--cap-drop=ALL` — no Linux capabilities
-- `--security-opt=no-new-privileges` — cannot escalate via setuid/setgid
-- Seccomp profile: **extends Docker's default** seccomp profile with additional blocks: `bpf()`, `mount()`, `ptrace()`, `personality()`, `unshare()`, `setns()` (prevents user namespace creation and namespace escape)
+- Non-root users have no capabilities by default in Linux — no explicit `cap-drop` needed
+- Claude's processes are launched with `PR_SET_NO_NEW_PRIVS` (via a wrapper) to prevent privilege escalation through setuid/setgid binaries
+- Since this is a full VM (not a container), Docker's seccomp profiles don't apply. The non-root user + no capabilities + read-only FS + `PR_SET_NO_NEW_PRIVS` provide equivalent protection. Claude cannot call `bpf()`, `mount()`, etc. because these require capabilities (`CAP_SYS_ADMIN`, `CAP_BPF`, `CAP_NET_ADMIN`) that the `claude` user does not have.
 
-**What this eliminates:** Self-modification attacks, privilege escalation, eBPF loading, process tracing/injection, filesystem remounting. The PreToolUse hook and rules.conf are guaranteed immutable because they live on the read-only root filesystem.
+**What this eliminates:** Self-modification attacks, privilege escalation, eBPF loading, process tracing (requires `CAP_SYS_PTRACE`), filesystem remounting (requires `CAP_SYS_ADMIN`). The PreToolUse hook and rules.conf are guaranteed immutable because they live on the read-only root filesystem.
 
 ### Layer 2: Network Boundary (domain-level enforcement)
 
@@ -311,6 +313,7 @@ All install scripts fetched at build time (`curl | bash` for Claude Code, Bun) a
 
 Contents:
 - **PreToolUse hook** pointing to `/opt/approval/check-command.sh`
+- **Attribution:** `includeCoAuthoredBy: false` — disables the `Co-authored-by: Claude` trailer on commits. All commits are authored exclusively by the robot account.
 - **MCP servers:**
   - Bun docs: `https://bun.com/docs/mcp`
 
@@ -349,37 +352,45 @@ Note: No `ANTHROPIC_API_KEY` is needed. Claude Code authenticates via interactiv
 
 | Variable | Purpose |
 |----------|---------|
-| `GIT_AUTHOR_NAME` | Robot git commit name |
-| `GIT_COMMITTER_NAME` | Robot git commit name |
-| `GIT_AUTHOR_EMAIL` | Robot git commit email |
-| `GIT_COMMITTER_EMAIL` | Robot git commit email |
+| `GIT_USER_NAME` | Robot git commit name (used for both author and committer) |
+| `GIT_USER_EMAIL` | Robot git commit email (used for both author and committer) |
+| `REPO_URL` | (Optional) Git repository URL to clone into `/workspace` at startup |
 
 ### Entrypoint Script
 
 `/usr/local/bin/entrypoint.sh` runs as root and performs:
 
-1. **Network lockdown:**
+1. **Filesystem hardening:**
+   - Mount tmpfs at `/workspace` (512MB), `/tmp` (128MB), `/home/claude/.cache` (256MB), `/home/claude/.claude` (64MB)
+   - Set ownership: `/workspace` and `/home/claude/.cache` owned by `claude`; `/home/claude/.claude` owned by root (mode 755)
+   - All remaining setup steps write to these tmpfs mounts or to paths that must complete before the root FS is locked
+   - After all setup is complete (steps 2-5), remount root filesystem as read-only: `mount -o remount,ro /`
+2. **Network lockdown:**
    - Start CoreDNS on `127.0.0.53` with config from `/opt/network/Corefile` — only resolves domains listed in `domains.conf`, all others return NXDOMAIN
    - Read `/opt/network/domains.conf`, resolve each domain to all IPs via `dig +short`
    - Apply iptables rules: `OUTPUT DROP` default, explicit ACCEPT for resolved IPs
    - Block Fly private networking (`fdaa::/16`, `172.16.0.0/12`) and cloud metadata (`169.254.0.0/16`)
    - Block all UDP except DNS to local CoreDNS
    - Start background cron job to re-resolve domains every 30 minutes
-2. **Git configuration:**
+3. **Git configuration:**
    - Write `$GH_PAT` to `/root/.git-credentials` (root-owned, mode 600)
    - Configure git system-wide credential helper pointing to that file
-   - Set git identity from `$GIT_AUTHOR_NAME` / `$GIT_AUTHOR_EMAIL` env vars
+   - Set git identity from `$GIT_USER_NAME` / `$GIT_USER_EMAIL` env vars
    - Configure `gh` CLI auth: `echo "$GH_PAT" | gh auth login --with-token` writing to `/opt/gh-config/hosts.yml` (root-owned directory, mode 711; file mode 644). Set `GH_CONFIG_DIR=/opt/gh-config` in Claude's environment.
    - Configure npm/bun auth for GitHub Packages: write `.npmrc` with `//npm.pkg.github.com/:_authToken=${GH_PAT}` to `/home/claude/.npmrc` (root-owned, mode 644)
-3. **Approval daemon startup:**
+4. **Approval daemon startup:**
    - Start the approval daemon on Unix socket `/run/claude-approval.sock` (supervised restart loop)
-4. **Claude Code setup:**
+5. **Claude Code setup:**
    - Copy settings template from `/opt/claude/settings.json` to `/home/claude/.claude/settings.json` (tmpfs, root-owned, mode 644 — Claude can read but not modify, preventing hook removal mid-session)
    - Install superpowers plugin (log warning on failure)
-5. **Session startup:**
+6. **Lock filesystem:** `mount -o remount,ro /` — after this point, the root filesystem is immutable
+7. **Repository clone (optional):**
+   - If `$REPO_URL` is set, clone it into `/workspace` as the `claude` user: `su -s /bin/bash claude -c "git clone $REPO_URL /workspace/repo"`
+   - Claude Code starts inside the cloned repo directory
+8. **Session startup:**
    - Start tmux session as `claude` user with `remain-on-exit on`
-   - In tmux: `cd /workspace && claude --dangerously-skip-permissions`
-   - `exec tmux attach -t claude` (keeps container alive)
+   - In tmux: `cd /workspace/repo` (if cloned) or `cd /workspace`, then run `claude --dangerously-skip-permissions`
+   - Keep container alive with `exec sleep infinity` (SSH users auto-attach via `.bashrc`)
 
 ### Connecting
 
@@ -439,7 +450,6 @@ claudetainer/
 │   ├── Corefile.template      # CoreDNS config template: base with NXDOMAIN default
 │   └── refresh-iptables.sh    # Cron script: re-resolves domains, atomic iptables-restore
 ├── status                     # CLI tool: shows active approvals, recent blocks, daemon health
-├── seccomp-profile.json       # Seccomp policy (extends Docker default)
 └── claude-settings.json       # Claude Code settings template (hook config + MCP)
 ```
 
@@ -457,7 +467,6 @@ claudetainer/
 | `Corefile.template` | CoreDNS base config; entrypoint generates final Corefile from domains.conf |
 | `refresh-iptables.sh` | Cron job (every 30m): re-resolves domains, atomic `iptables-restore` |
 | `status` | CLI tool: shows active approvals, recent blocks, daemon health |
-| `seccomp-profile.json` | Extends Docker default seccomp + blocks bpf/mount/ptrace/unshare/setns |
 | `claude-settings.json` | Claude Code settings template: hook config + Bun docs MCP |
 
 ## Observability & Audit Trail

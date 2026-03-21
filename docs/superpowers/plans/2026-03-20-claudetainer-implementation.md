@@ -31,7 +31,6 @@ claudetainer/
 │   ├── Corefile.template
 │   └── refresh-iptables.sh
 ├── status
-├── seccomp-profile.json
 └── claude-settings.json
 ```
 
@@ -363,16 +362,16 @@ git commit -m "feat: add approval system — hook, daemon, CLI, rules"
 
 ---
 
-### Task 3: Claude Code Settings & Seccomp Profile
+### Task 3: Claude Code Settings
 
 **Files:**
 - Create: `claude-settings.json`
-- Create: `seccomp-profile.json`
 
 - [ ] **Step 1: Create `claude-settings.json`**
 
 ```json
 {
+  "includeCoAuthoredBy": false,
   "mcpServers": {
     "bun-docs": {
       "type": "http",
@@ -396,21 +395,11 @@ git commit -m "feat: add approval system — hook, daemon, CLI, rules"
 }
 ```
 
-- [ ] **Step 2: Create `seccomp-profile.json`**
-
-Use Docker's default seccomp profile as the base (allowlist approach) and add explicit blocks for `bpf`, `mount`, `umount`, `umount2`, `ptrace`, `personality`, `unshare`, `setns`. The full default profile is large — generate it with:
+- [ ] **Step 2: Commit**
 
 ```bash
-docker run --rm alpine cat /etc/docker/seccomp/default.json > seccomp-profile.json
-```
-
-Then add the additional blocked syscalls to the profile. If running on Fly.io where custom seccomp profiles may not be supported via `fly.toml`, document this as a fallback that the other layers (cap-drop, no-new-privileges) provide equivalent protection for the specific syscalls we care about.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add claude-settings.json seccomp-profile.json
-git commit -m "feat: add Claude settings template and seccomp profile"
+git add claude-settings.json
+git commit -m "feat: add Claude settings template with hook and MCP config"
 ```
 
 ---
@@ -484,7 +473,18 @@ set -euo pipefail
 
 echo "[ENTRYPOINT] Starting claudetainer..."
 
-# === 1. Network lockdown ===
+# === 1. Filesystem hardening ===
+# Mount tmpfs at writable paths before anything else
+mount -t tmpfs -o size=512m tmpfs /workspace
+mount -t tmpfs -o size=128m tmpfs /tmp
+mount -t tmpfs -o size=256m tmpfs /home/claude/.cache
+mount -t tmpfs -o size=64m tmpfs /home/claude/.claude
+chmod 1777 /tmp
+
+# Set ownership (except .claude which stays root-owned)
+chown claude:claude /workspace /home/claude/.cache
+
+# === 2. Network lockdown ===
 
 # Generate CoreDNS config from domains.conf
 COREFILE="/tmp/Corefile"
@@ -517,13 +517,13 @@ echo "nameserver 127.0.0.53" > /etc/resolv.conf
 # Start periodic iptables refresh (every 30 min)
 (while true; do sleep 1800; /opt/network/refresh-iptables.sh; done) &
 
-# === 2. Git configuration ===
+# === 3. Git configuration ===
 
 echo "https://${GH_PAT}@github.com" > /root/.git-credentials
 chmod 600 /root/.git-credentials
 git config --system credential.helper 'store --file=/root/.git-credentials'
-git config --system user.name "${GIT_AUTHOR_NAME:-claudetainer}"
-git config --system user.email "${GIT_AUTHOR_EMAIL:-claudetainer@noreply.github.com}"
+git config --system user.name "${GIT_USER_NAME:-claudetainer}"
+git config --system user.email "${GIT_USER_EMAIL:-claudetainer@noreply.github.com}"
 
 # Configure gh CLI auth
 mkdir -p /opt/gh-config
@@ -535,13 +535,13 @@ chmod 711 /opt/gh-config
 chmod 644 /opt/gh-config/* 2>/dev/null || true
 
 # Configure npm/bun auth for GitHub Packages
-cat > /home/claude/.npmrc <<EOF
+cat > /home/claude/.npmrc <<NPMRC
 //npm.pkg.github.com/:_authToken=${GH_PAT}
-EOF
+NPMRC
 chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
 
-# === 3. Approval daemon ===
+# === 4. Approval daemon ===
 
 (while true; do
   /opt/approval/approval-daemon 2>&1
@@ -549,10 +549,9 @@ chmod 644 /home/claude/.npmrc
   sleep 1
 done) &
 
-# === 4. Claude Code setup ===
+# === 5. Claude Code setup ===
 
 # Copy settings template (root-owned, mode 644 — Claude can read but not modify)
-mkdir -p /home/claude/.claude
 cp /opt/claude/settings.json /home/claude/.claude/settings.json
 chown root:root /home/claude/.claude/settings.json
 chmod 644 /home/claude/.claude/settings.json
@@ -561,12 +560,25 @@ chmod 644 /home/claude/.claude/settings.json
 su -s /bin/bash claude -c 'claude plugin install superpowers@claude-plugins-official 2>/dev/null' || \
   echo "[ENTRYPOINT] WARNING: Failed to install superpowers plugin" >&2
 
-# === 5. Session startup ===
+# === 6. Lock filesystem ===
+# After all setup, remount root as read-only
+mount -o remount,ro /
+echo "[ENTRYPOINT] Root filesystem locked (read-only)"
 
-# Set ownership on writable mounts (except .claude which stays root-owned)
-chown claude:claude /workspace /home/claude/.cache 2>/dev/null || true
+# === 7. Clone repo (optional) ===
+WORK_DIR="/workspace"
+if [[ -n "${REPO_URL:-}" ]]; then
+  echo "[ENTRYPOINT] Cloning $REPO_URL..."
+  su -s /bin/bash claude -c "git clone '$REPO_URL' /workspace/repo" || \
+    echo "[ENTRYPOINT] WARNING: Failed to clone $REPO_URL" >&2
+  if [[ -d /workspace/repo ]]; then
+    WORK_DIR="/workspace/repo"
+  fi
+fi
 
-# tmux config
+# === 8. Session startup ===
+
+# tmux config (already on tmpfs at /tmp)
 cat > /tmp/.tmux.conf <<'TMUX'
 set -g remain-on-exit on
 set -g history-limit 50000
@@ -576,7 +588,7 @@ TMUX
 su -s /bin/bash claude -c "
   export GH_CONFIG_DIR=/opt/gh-config
   export HOME=/home/claude
-  cd /workspace
+  cd '$WORK_DIR'
   tmux -f /tmp/.tmux.conf new-session -d -s claude 'claude --dangerously-skip-permissions'
 "
 
@@ -748,53 +760,37 @@ git commit -m "feat: add fly.toml and GitHub Actions build workflow"
 
 ---
 
-### Task 8: Integration Test & First Deploy
+### Task 8: First Deploy & Verification
 
-- [ ] **Step 1: Build the image**
+All testing happens on Fly.io directly — the container uses iptables, CoreDNS, tmpfs mounts, and read-only root FS remount which require a full VM environment.
 
-```bash
-docker build -t claudetainer:test .
-```
-
-- [ ] **Step 2: Test locally**
-
-```bash
-docker run -it --rm \
-  --cap-drop=ALL \
-  --cap-add=NET_ADMIN \
-  --security-opt=no-new-privileges \
-  -e GH_PAT=test-pat \
-  -e GIT_AUTHOR_NAME=test-bot \
-  -e GIT_AUTHOR_EMAIL=test@example.com \
-  --tmpfs /workspace:rw,size=512m \
-  --tmpfs /tmp:rw,size=128m \
-  --tmpfs /home/claude/.cache:rw,size=256m \
-  --tmpfs /home/claude/.claude:rw,size=64m \
-  claudetainer:test
-```
-
-Note: `CAP_NET_ADMIN` is needed for iptables setup in the entrypoint. The entrypoint runs as root and configures iptables before Claude (non-root) starts. On Fly.io, the VM has full root so this is not an issue.
-
-Verify:
-- CoreDNS starts and resolves allowlisted domains
-- iptables rules applied (check with `iptables -L -n`)
-- Approval daemon running (check socket exists)
-- tmux session started with Claude Code
-- `! status` shows healthy services
-- `! approve 'echo test'` writes a token
-
-- [ ] **Step 3: Create the Fly app and set secrets**
+- [ ] **Step 1: Create the Fly app**
 
 ```bash
 fly apps create claudetainer
+```
+
+- [ ] **Step 2: Set secrets**
+
+```bash
 fly secrets set GH_PAT=<your-fine-grained-pat>
-fly machine run . \
-  --env GIT_AUTHOR_NAME=claudetainer-bot \
-  --env GIT_AUTHOR_EMAIL=claudetainer@noreply.github.com \
-  --env GIT_COMMITTER_NAME=claudetainer-bot \
-  --env GIT_COMMITTER_EMAIL=claudetainer@noreply.github.com \
-  --region ewr \
-  --vm-memory 1024
+```
+
+- [ ] **Step 3: Deploy**
+
+```bash
+fly deploy \
+  --env GIT_USER_NAME=claudetainer-bot \
+  --env GIT_USER_EMAIL=claudetainer@noreply.github.com
+```
+
+Optionally, to auto-clone a repo on start:
+
+```bash
+fly deploy \
+  --env GIT_USER_NAME=claudetainer-bot \
+  --env GIT_USER_EMAIL=claudetainer@noreply.github.com \
+  --env REPO_URL=https://github.com/your-org/your-repo
 ```
 
 - [ ] **Step 4: Connect and verify**
@@ -802,13 +798,19 @@ fly machine run . \
 ```bash
 fly ssh console
 # Should auto-attach to tmux with Claude Code running
-# Complete OAuth login when prompted
-# Test: ! status
-# Test: ask Claude to "bun add react" — should require approval
 ```
 
-- [ ] **Step 5: Commit any fixes**
+Verify:
+- Complete OAuth login when prompted by Claude Code
+- `! status` — CoreDNS running, approval daemon socket active
+- Ask Claude to `bun add react` — should require approval
+- `! approve 'bun add react'` — should approve and succeed
+- Verify root FS is read-only: `touch /test` should fail with "Read-only file system"
+- Verify iptables: `iptables -L -n` shows OUTPUT DROP default with allowlist
+- Verify Claude can't modify hook: `cat /opt/approval/rules.conf` works but write fails
+
+- [ ] **Step 5: Commit any fixes from testing**
 
 ```bash
-git add -A && git commit -m "fix: integration test fixes"
+git add -A && git commit -m "fix: integration test fixes from first deploy"
 ```
