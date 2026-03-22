@@ -224,11 +224,15 @@ block:.*/proc/
 block:.*-exec\b
 block:.*\bxargs\b
 # Git safety: prevent destructive push and remote manipulation
-block:^git\s+push\s+.*--force\b
-block:^git\s+push\s+.*-f\b
-block:^git\s+push\s+.*--delete\b
-block:^git\s+push\s+.*-d\b
+block:^git\s+push\s+.*--force
+block:^git\s+push\s+.*-[a-zA-Z]*f
+block:^git\s+push\s+.*--delete
+block:^git\s+push\s+.*-[a-zA-Z]*d
+block:^git\s+push\s+.*\b(main|master)\b
 block:^git\s+remote\s+(add|set-url|rename|remove)\b
+block:^git\s+config\s+.*remote\.
+block:^git\s+tag\b
+block:^git\s+push\s+.*--tags
 
 # Approval-required patterns (exit 2 with approval instructions)
 approve:^(apt-get|apt)\s+install\b
@@ -289,7 +293,7 @@ The `claude` user can run `git clone/push/pull` and git transparently authentica
 
 **gh CLI authentication:**
 
-The entrypoint configures `gh` auth writing to `/opt/gh-config/hosts.yml` (root-owned directory, mode 711; file mode 644). `GH_CONFIG_DIR=/opt/gh-config` is set in Claude's environment. Since `gh api` is hard-blocked and the PAT is fine-grained with minimal permissions, the token being readable via `gh config` is an accepted risk — Claude cannot exfiltrate it to non-allowlisted domains.
+The entrypoint configures `gh` auth writing to `/opt/gh-config/hosts.yml` (root-owned directory, mode 711; file mode 644). `GH_CONFIG_DIR=/opt/gh-config` is set in Claude's environment. Since the PAT is fine-grained and scoped to a single repo with minimal permissions, the token being readable via `gh config` is an accepted risk — Claude cannot exfiltrate it to non-allowlisted domains, and the PAT limits what `gh api` can do.
 
 **What's NOT in Claude's environment:** No `ANTHROPIC_API_KEY`, no `GH_PAT`, no `GH_TOKEN`. The PAT is accessible only via root-owned git credential store and gh config. The Anthropic API is accessed via OAuth tokens managed by Claude Code itself.
 
@@ -534,12 +538,15 @@ claudetainer/
 | Claude uses `env VAR=val cmd` to bypass hook | `env` with arguments falls to default:block (no allow rule for env) |
 | Claude reaches other Fly machines | Fly private network ranges (fdaa::/16, 172.16.0.0/12) blocked in iptables |
 | Claude exfiltrates Anthropic credentials | Claude Code uses OAuth; tokens are session-scoped on tmpfs, lost on restart |
-| Claude exfiltrates GitHub PAT | PAT in root-owned files (mode 600); readable via gh config (accepted risk — scoped, gh api blocked, can't reach non-allowlisted domains) |
+| Claude exfiltrates GitHub PAT | PAT in root-owned files (mode 600); readable via gh config (accepted risk — single-repo scope, can't reach non-allowlisted domains) |
 | Claude reads secrets from /proc | No secrets in Claude's environment; PAT only in root-owned files |
 | Claude runs `approve` via Bash tool | `block:^approve\b` in hook; `!` shell escape bypasses hooks (human-only) |
 | Claude uses command chaining to bypass hook | Hook splits compound commands (`;`, `&&`, `\|\|`, `$()`) and evaluates each sub-command independently |
-| Claude exfiltrates via `git push` | PAT scoped to single repo; branch protection requires human review; `git push --force/--delete` blocked |
-| Claude adds attacker remote | `git remote add/set-url` hard-blocked; PAT only works on scoped repo anyway |
+| Claude pushes to main | `git push ... main/master` hard-blocked at hook level + GitHub branch protection as backup |
+| Claude force-pushes | `git push --force` and combined flags (`-fu`) hard-blocked |
+| Claude exfiltrates via `git push` | PAT scoped to single repo; branch protection requires human review before merge |
+| Claude adds attacker remote | `git remote add/set-url` and `git config remote.*` hard-blocked; PAT only works on scoped repo |
+| Claude creates tags | `git tag` and `git push --tags` hard-blocked |
 | Claude abuses `gh api` | Fine-grained PAT scoped to single repo; `gh api` can only do what the PAT allows |
 | Claude runs `sudo`, `rm -rf /` | Hook hard-blocks destructive commands |
 | Claude bypasses hook via eval/sh -c | `eval`, `exec`, `source`, `sh -c`, `bash -c` all hard-blocked |
