@@ -29,6 +29,7 @@ while IFS= read -r domain || [[ -n "$domain" ]]; do
 done < "$DOMAINS_FILE"
 
 echo "-A OUTPUT -p udp -j DROP" >> "$RULES_FILE"
+echo '-A OUTPUT -j NFLOG --nflog-prefix "CLAUDETAINER_DROP" --nflog-group 100' >> "$RULES_FILE"
 echo "COMMIT" >> "$RULES_FILE"
 
 iptables-restore < "$RULES_FILE"
