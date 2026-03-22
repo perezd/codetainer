@@ -183,7 +183,7 @@ allow:^git\s+remote\s*$
 allow:^git\s+remote\s+(-v|--verbose|show|get-url)\b
 allow:^(ls|cat|head|tail|cp|mv|mkdir|touch|tree|less)\b
 allow:^(grep|rg|fd|ag)\b
-allow:^bun (run|test|build|check)\b
+allow:^bun\s+(run|test|build|check|remove|link|unlink|patch|pm|why|init|repl|exec|audit|outdated|info)\b
 allow:^just\b
 allow:^(python3?)\b
 allow:^(echo|pwd|cd|which)\b
@@ -216,6 +216,8 @@ block:^approve\b
 block:^gh\s+gist\b
 block:^gh\s+repo\s+(create|delete)\b
 block:^gh\s+auth\b
+# Dangerous bun subcommands
+block:^bun\s+(publish|upgrade|feedback)\b
 # tmux cross-pane injection
 block:^tmux\s+(send-keys|send-prefix|capture-pane|pipe-pane)\b
 # Prevent reading environment variables and /proc (credential leaks)
@@ -237,7 +239,7 @@ block:^git\s+push\s+.*--tags
 
 # Approval-required patterns (exit 2 with approval instructions)
 approve:^(apt-get|apt)\s+install\b
-approve:^bun\s+(add|install|x)\b
+approve:^bun\s+(add|install|x|update|create)\b
 approve:^bunx\b
 approve:^(pip3?|pipx)\s+install\b
 approve:^curl\b
