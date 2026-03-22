@@ -678,13 +678,17 @@ All testing happens on Fly.io directly — the container uses iptables, CoreDNS,
 fly apps create claudetainer
 ```
 
-- [ ] **Step 2: Set secrets**
+- [ ] **Step 2: Make GHCR package public**
+
+In the GitHub repo settings, go to Packages, find the `claudetainer` container image, and change its visibility to **Public**. The image contains no secrets — those are injected at runtime via Fly secrets.
+
+- [ ] **Step 3: Set secrets**
 
 ```bash
 fly secrets set GH_PAT=<your-fine-grained-pat>
 ```
 
-- [ ] **Step 3: Run the machine**
+- [ ] **Step 4: Run the machine**
 
 ```bash
 fly machine run ghcr.io/<org>/claudetainer:latest \
@@ -709,7 +713,7 @@ fly machine run ghcr.io/<org>/claudetainer:latest \
   --env REPO_URL=https://github.com/your-org/your-repo
 ```
 
-- [ ] **Step 4: Connect and verify**
+- [ ] **Step 5: Connect and verify**
 
 ```bash
 fly ssh console
@@ -725,7 +729,7 @@ Verify:
 - Verify iptables: `iptables -L -n` shows OUTPUT DROP default with allowlist
 - Verify Claude can't modify hook: `cat /opt/approval/rules.conf` works but write fails
 
-- [ ] **Step 5: Commit any fixes from testing**
+- [ ] **Step 6: Commit any fixes from testing**
 
 ```bash
 git add -A && git commit -m "fix: integration test fixes from first deploy"

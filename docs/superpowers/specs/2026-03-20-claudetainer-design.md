@@ -440,7 +440,7 @@ tmux is configured with `remain-on-exit on`. The pane stays alive showing exit s
 2. Log in to GitHub Container Registry (GHCR)
 3. Build and push Docker image to `ghcr.io/<org>/claudetainer:latest`
 
-GHCR authentication uses the built-in `GITHUB_TOKEN` provided by GitHub Actions — no additional secrets needed.
+GHCR authentication uses the built-in `GITHUB_TOKEN` provided by GitHub Actions — no additional secrets needed. The GHCR package visibility should be set to **public** so Fly.io can pull the image without registry credentials. The image contains no secrets (those are injected at runtime via Fly secrets).
 
 Fly.io deployment is done manually — no `fly.toml` needed:
 
