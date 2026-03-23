@@ -35,7 +35,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
 RUN useradd -m -s /bin/bash -u 1000 claude
 
 # Auto-attach to tmux on SSH login
-RUN echo 'if [ -n "$SSH_CONNECTION" ] && tmux has-session -t claude 2>/dev/null; then exec tmux attach -t claude; fi' \
+RUN echo 'if [ -n "$SSH_CONNECTION" ] && tmux -S /tmp/tmux-1000/default has-session -t claude 2>/dev/null; then exec tmux -S /tmp/tmux-1000/default attach -t claude; fi' \
     >> /root/.bashrc
 
 # Approval system
