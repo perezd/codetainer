@@ -34,18 +34,12 @@ echo "COMMIT" >> "$RULES_FILE"
 
 iptables-restore < "$RULES_FILE"
 
-# IPv6 rules: use ip6tables-restore for atomic application (no window where
-# policy is DROP but rules are flushed, which would kill active SSH sessions)
-ip6tables-restore 2>/dev/null <<'IP6RULES' || true
-*filter
-:INPUT ACCEPT [0:0]
-:FORWARD ACCEPT [0:0]
-:OUTPUT DROP [0:0]
--A OUTPUT -o lo -j ACCEPT
--A OUTPUT -d fdaa::/16 -j ACCEPT
--A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-COMMIT
-IP6RULES
+# IPv6: leave default ACCEPT policy.
+# Fly SSH uses public IPv6 (2605:4c40::/32) and private (fdaa::/16) for
+# communication, and conntrack doesn't appear to work for IPv6 on Fly's
+# kernel. IPv4 iptables is where our real security enforcement happens.
+# Restricting IPv6 OUTPUT breaks SSH with no security benefit since all
+# our allowlisted services are contacted over IPv4.
 
 rm -f "$RULES_FILE"
 echo "[NETWORK] iptables refreshed at $(date)" >&2
