@@ -37,7 +37,8 @@ iptables-restore < "$RULES_FILE"
 ip6tables -P OUTPUT DROP 2>/dev/null || true
 ip6tables -F OUTPUT 2>/dev/null || true
 ip6tables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
-ip6tables -A OUTPUT -d fdaa::/16 -j DROP 2>/dev/null || true
+# Allow established connections (needed for SSH responses over Fly's fdaa:: network)
+ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 
 rm -f "$RULES_FILE"
 echo "[NETWORK] iptables refreshed at $(date)" >&2
