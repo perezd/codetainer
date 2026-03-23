@@ -22,6 +22,7 @@ cat > /tmp/.tmux.conf <<'TMUX'
 set -g remain-on-exit on
 set -g history-limit 50000
 set -g default-terminal "xterm-256color"
+set -g allow-passthrough on
 TMUX
 
 # Determine working directory
