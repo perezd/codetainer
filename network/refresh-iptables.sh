@@ -14,6 +14,8 @@ cat > "$RULES_FILE" <<'HEADER'
 -A OUTPUT -d 172.16.0.0/12 -j DROP
 -A OUTPUT -p udp -d 127.0.0.53 --dport 53 -j ACCEPT
 -A OUTPUT -p tcp -d 127.0.0.53 --dport 53 -j ACCEPT
+-A OUTPUT -p udp -d 8.8.8.8 --dport 53 -j ACCEPT
+-A OUTPUT -p udp -d 1.1.1.1 --dport 53 -j ACCEPT
 -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 HEADER
 
