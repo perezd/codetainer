@@ -39,6 +39,7 @@ fi
 su -s /bin/bash claude -c "
   export GH_CONFIG_DIR=/opt/gh-config
   export HOME=$CLAUDE_HOME
+  export PATH=$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:\$PATH
   export CLAUDE_CODE_OAUTH_TOKEN='$CLAUDE_CODE_OAUTH_TOKEN'
   cd '$WORK_DIR'
   tmux -f /tmp/.tmux.conf new-session -d -s claude 'claude --dangerously-skip-permissions'

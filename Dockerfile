@@ -39,8 +39,11 @@ RUN cp -L /home/claude/.bun/bin/bun /usr/local/bin/bun \
 USER claude
 RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
-# Copy claude binary to shared location (follows symlink to versioned binary)
+# Copy claude binary to shared location and configure install method
 RUN cp -L /home/claude/.local/bin/claude /usr/local/bin/claude
+USER claude
+RUN claude install 2>/dev/null || true
+USER root
 
 # Start-claude script: handles auth, tmux creation, and attach
 COPY start-claude /usr/local/bin/start-claude
