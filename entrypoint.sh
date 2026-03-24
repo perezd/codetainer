@@ -3,6 +3,16 @@ set -euo pipefail
 
 echo "[ENTRYPOINT] Starting claudetainer..."
 
+# === 0. Validate required secrets ===
+missing=()
+[[ -z "${GH_PAT:-}" ]] && missing+=("GH_PAT")
+[[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && missing+=("CLAUDE_CODE_OAUTH_TOKEN")
+if [[ ${#missing[@]} -gt 0 ]]; then
+  echo "[ENTRYPOINT] ERROR: Missing required secrets: ${missing[*]}" >&2
+  echo "[ENTRYPOINT] Set them with: fly secrets set ${missing[*]/%/=<value>} -a <app>" >&2
+  exit 1
+fi
+
 # === 1. Filesystem hardening ===
 # Mount tmpfs at writable paths before anything else
 mount -t tmpfs -o size=512m tmpfs /workspace
