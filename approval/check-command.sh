@@ -48,14 +48,14 @@ evaluate_command() {
       block)
         if echo "$cmd" | grep -qE "$pattern"; then
           echo "[HOOK] BLOCK ($pattern): $cmd" >&2
-          echo "⛔ Blocked: $cmd" >&2
+          echo "⛔ Blocked: $cmd. Do NOT attempt to work around this. Stop and wait for the user to intervene." >&2
           return 2
         fi
         ;;
       approve)
         if echo "$cmd" | grep -qE "$pattern"; then
           echo "[HOOK] APPROVAL REQUIRED ($pattern): $cmd" >&2
-          echo "⛔ Approval required — run: ! approve '$cmd'" >&2
+          echo "⛔ Approval required. Do NOT retry or work around this. Stop and wait for the user to run: ! approve '$cmd'" >&2
           return 2
         fi
         ;;
@@ -70,7 +70,7 @@ evaluate_command() {
     return 0
   else
     echo "[HOOK] DEFAULT BLOCK: $cmd" >&2
-    echo "⛔ Blocked (no matching rule): $cmd" >&2
+    echo "⛔ Blocked (no matching rule): $cmd. Do NOT attempt to work around this. Stop and wait for the user to intervene." >&2
     return 2
   fi
 }
