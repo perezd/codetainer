@@ -60,7 +60,7 @@ sudo -u claude \
   CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
   LANG="$LANG" \
   LC_ALL="$LC_ALL" \
-  claude plugin install superpowers@claude-plugins-official 2>/dev/null \
+  claude plugin install superpowers@claude-plugins-official \
   || echo "WARNING: Failed to install superpowers plugin"
 
 # Start Claude Code in tmux as the claude user

@@ -127,19 +127,19 @@ chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
 
 # === 4. Approval setup ===
+# Must be on tmpfs so it's writable after root FS is remounted read-only
+mount -t tmpfs -o size=1m tmpfs /run
 mkdir -p /run/claude-approved
+chmod 1777 /run/claude-approved
 
 # === 5. Claude Code setup ===
 
-# Copy settings template into claude-owned .claude directory
-# Claude Code needs to write state files here (preferences, sessions, etc.)
-# settings.json is root-owned so hook config can't be modified, but claude
-# can delete and recreate it (accepted risk — iptables is the real enforcement)
+# Copy settings template — claude can delete and recreate this file
+# (accepted risk: iptables is the real enforcement, hooks are defense-in-depth)
 cp /opt/claude/settings.json /home/claude/.claude/settings.json
-chown root:root /home/claude/.claude/settings.json
-chmod 644 /home/claude/.claude/settings.json
+chown claude:claude /home/claude/.claude/settings.json
 
-# Skip onboarding wizard (required for headless auth via CLAUDE_CODE_OAUTH_TOKEN)
+# Write Claude Code state (onboarding skip + project trust written after clone below)
 echo '{"hasCompletedOnboarding": true}' > /home/claude/.claude.json
 chown claude:claude /home/claude/.claude.json
 
@@ -156,6 +156,22 @@ if [[ -n "${REPO_URL:-}" ]]; then
     chown -R claude:claude /workspace/repo || \
     echo "[ENTRYPOINT] WARNING: Failed to clone $REPO_URL" >&2
 fi
+
+# Pre-accept project trust for the workspace directory
+WORK_DIR="/workspace"
+[[ -d /workspace/repo ]] && WORK_DIR="/workspace/repo"
+cat > /home/claude/.claude.json <<EOF
+{
+  "hasCompletedOnboarding": true,
+  "projects": {
+    "$WORK_DIR": {
+      "hasTrustDialogAccepted": true,
+      "allowedTools": []
+    }
+  }
+}
+EOF
+chown claude:claude /home/claude/.claude.json
 
 echo "[ENTRYPOINT] Ready. Waiting for SSH connections..."
 echo "[ENTRYPOINT] Run 'fly ssh console -a <app>' to connect."

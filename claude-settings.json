@@ -9,7 +9,7 @@
           {
             "type": "command",
             "command": "/opt/approval/check-command.sh",
-            "timeout": 300
+            "timeout": 30000
           }
         ]
       }
