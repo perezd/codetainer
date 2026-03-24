@@ -17,6 +17,9 @@ cat > "$RULES_FILE" <<'HEADER'
 -A OUTPUT -p udp -d 8.8.8.8 --dport 53 -j ACCEPT
 -A OUTPUT -p udp -d 1.1.1.1 --dport 53 -j ACCEPT
 -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A OUTPUT -d 140.82.112.0/20 -j ACCEPT
+-A OUTPUT -d 185.199.108.0/22 -j ACCEPT
+-A OUTPUT -d 143.55.64.0/20 -j ACCEPT
 HEADER
 
 while IFS= read -r domain || [[ -n "$domain" ]]; do

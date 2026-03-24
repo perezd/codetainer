@@ -93,7 +93,7 @@ echo "nameserver 127.0.0.53" > /etc/resolv.conf
 /opt/network/refresh-iptables.sh
 
 # Start periodic iptables refresh (every 30 min)
-(while true; do sleep 1800; /opt/network/refresh-iptables.sh; done) &
+(while true; do sleep 300; /opt/network/refresh-iptables.sh; done) &
 
 # === 3. Git + GitHub configuration ===
 
@@ -127,8 +127,7 @@ chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
 
 # === 4. Approval setup ===
-# Must be on tmpfs so it's writable after root FS is remounted read-only
-mount -t tmpfs -o size=1m tmpfs /run
+# /run is already tmpfs on Linux, so it stays writable after root FS read-only remount
 mkdir -p /run/claude-approved
 chmod 1777 /run/claude-approved
 
