@@ -95,5 +95,8 @@ sudo -u claude \
   LC_ALL="$LC_ALL" \
   tmux -S "$TMUX_SOCKET" split-window -t claude -v -l 20% -c "$WORK_DIR" "bash --login -i"
 
+# Select the Claude Code pane (top) so it's focused on attach
+tmux -S "$TMUX_SOCKET" select-pane -t claude.0
+
 # Attach (focus stays on Claude Code pane)
 exec tmux -S "$TMUX_SOCKET" attach -t claude
