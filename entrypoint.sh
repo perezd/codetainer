@@ -66,17 +66,17 @@ echo "nameserver 127.0.0.53" > /etc/resolv.conf
 # Start periodic iptables refresh (every 30 min)
 (while true; do sleep 1800; /opt/network/refresh-iptables.sh; done) &
 
-# === 3. Git configuration ===
+# === 3. Git + GitHub configuration ===
 
-echo "https://${GH_PAT}@github.com" > /root/.git-credentials
-chmod 644 /root/.git-credentials
-git config --system credential.helper 'store --file=/root/.git-credentials'
 git config --system user.name "${GIT_USER_NAME:-claudetainer}"
 git config --system user.email "${GIT_USER_EMAIL:-claudetainer@noreply.github.com}"
 
-# Configure gh CLI auth
-mkdir -p /opt/gh-config
+# Authenticate gh CLI with the PAT, then use gh as the git credential helper
 echo "$GH_PAT" | gh auth login --with-token --hostname github.com 2>/dev/null || true
+gh auth setup-git --hostname github.com 2>/dev/null || true
+
+# Copy gh config to a shared location readable by claude user
+mkdir -p /opt/gh-config
 if [[ -d /root/.config/gh ]]; then
   cp -r /root/.config/gh/* /opt/gh-config/ 2>/dev/null || true
 fi
@@ -102,6 +102,10 @@ mkdir -p /run/claude-approved
 cp /opt/claude/settings.json /home/claude/.claude/settings.json
 chown root:root /home/claude/.claude/settings.json
 chmod 644 /home/claude/.claude/settings.json
+
+# Skip onboarding wizard (required for headless auth via CLAUDE_CODE_OAUTH_TOKEN)
+echo '{"hasCompletedOnboarding": true}' > /home/claude/.claude.json
+chown claude:claude /home/claude/.claude.json
 
 # === 6. Lock filesystem ===
 # After all setup, remount root as read-only
