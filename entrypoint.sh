@@ -233,11 +233,19 @@ if [[ ! -f /home/claude/.claude/settings.json ]]; then
 elif ! grep -q superpowers /home/claude/.claude/settings.json 2>/dev/null; then
   echo "[ENTRYPOINT] WARN: superpowers not in settings.json" >&2
   READY=false
+elif ! grep -q typescript-lsp /home/claude/.claude/settings.json 2>/dev/null; then
+  echo "[ENTRYPOINT] WARN: typescript-lsp not in settings.json" >&2
+  READY=false
 fi
 
 # Plugin files must be seeded
 if [[ ! -d /home/claude/.claude/plugins/cache/claude-plugins-official/superpowers ]]; then
   echo "[ENTRYPOINT] WARN: superpowers plugin files not found" >&2
+  READY=false
+fi
+
+if [[ ! -d /home/claude/.claude/plugins/cache/claude-plugins-official/typescript-lsp ]]; then
+  echo "[ENTRYPOINT] WARN: typescript-lsp plugin files not found" >&2
   READY=false
 fi
 
