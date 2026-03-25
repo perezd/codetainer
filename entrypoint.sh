@@ -147,6 +147,13 @@ if [ -d /opt/claude-plugins/superpowers ]; then
   chown -R claude:claude /home/claude/.claude/plugins
 fi
 
+# Seed TypeScript LSP plugin cache (cloned at build time, avoids runtime download)
+if [ -d /opt/claude-plugins/typescript-lsp ]; then
+  mkdir -p /home/claude/.claude/plugins/cache/claude-plugins-official
+  cp -r /opt/claude-plugins/typescript-lsp /home/claude/.claude/plugins/cache/claude-plugins-official/
+  chown -R claude:claude /home/claude/.claude/plugins
+fi
+
 # Write Claude Code state (onboarding skip + project trust written after clone below)
 echo '{"hasCompletedOnboarding": true}' > /home/claude/.claude.json
 chown claude:claude /home/claude/.claude.json
