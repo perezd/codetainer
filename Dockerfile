@@ -91,10 +91,11 @@ RUN chmod +x /usr/local/bin/gh
 COPY network/ /opt/network/
 RUN chmod +x /opt/network/refresh-iptables.sh
 
-# Claude settings template and statusline
+# Claude settings template, statusline, and session namer
 COPY claude-settings.json /opt/claude/settings.json
 COPY statusline-command.sh /opt/claude/statusline-command.sh
-RUN chmod +x /opt/claude/statusline-command.sh
+COPY session-namer.sh /opt/claude/session-namer.sh
+RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh
 
 # Status tool
 COPY status /usr/local/bin/status

@@ -13,6 +13,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/claude/session-namer.sh",
+            "timeout": 60000
+          }
+        ]
+      }
     ]
   },
   "skipDangerousModePermissionPrompt": true,
