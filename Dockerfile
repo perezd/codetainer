@@ -57,6 +57,11 @@ USER root
 RUN cp -L /home/claude/.bun/bin/bun /usr/local/bin/bun \
     && cp -L /home/claude/.bun/bin/bunx /usr/local/bin/bunx
 
+# Node.js LTS (required by TypeScript LSP plugin)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Claude Code (install as claude user)
 USER claude
 RUN curl -fsSL https://claude.ai/install.sh | bash
