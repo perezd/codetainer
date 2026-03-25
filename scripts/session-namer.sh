@@ -34,10 +34,11 @@ SENTINEL="/tmp/claude-session-named-${sanitized_session_id}"
   if [ -n "$name" ]; then
     current_session=$(tmux display-message -p '#S' 2>/dev/null)
     if [ -n "$current_session" ]; then
-      tmux rename-session -t "$current_session" "$name" 2>/dev/null || true
+      if tmux rename-session -t "$current_session" "$name" 2>/dev/null; then
+        # Only create sentinel after successful rename — allows retry on transient failures
+        touch "$SENTINEL"
+      fi
     fi
-    # Only create sentinel after successful rename — allows retry on transient failures
-    touch "$SENTINEL"
   fi
 ) &
 
