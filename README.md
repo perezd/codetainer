@@ -212,25 +212,18 @@ Switch panes with `Ctrl-b ↓` / `Ctrl-b ↑` or click with the mouse.
 
 ### Approving Commands
 
-Claude Code runs with `--dangerously-skip-permissions` but has a PreToolUse hook that enforces a three-tier command approval system:
+Claude Code runs with `--dangerously-skip-permissions` but has a PreToolUse hook that enforces a three-tier command classification pipeline:
 
-- **Auto-allowed**: Safe read/write commands (git, ls, cat, grep, bun run/test/build, etc.)
-- **Blocked**: Dangerous commands that are never allowed (sudo, eval, rm -rf /, git push --force, etc.)
-- **Approval-required**: Package installation and network commands (bun add, curl, wget, pip install, etc.)
+- **Tier 1 — Hard-block** (instant): Dangerous commands that are never allowed (sudo, eval, rm -rf /, git push --force, credential leaks, etc.)
+- **Tier 2 — Hot-word scan** (instant): If the command contains a risky keyword (curl, bun add, pip install, etc.), escalate to Tier 3. Otherwise, allow.
+- **Tier 3 — Haiku classification** (1-3s): A Haiku LLM classifies the command as allow, block, or approve. For approve, Claude Code's native permission prompt is shown to the user.
 
-When Claude tries to run a command that requires approval, it will be blocked. To approve it, use the `approve` command from the terminal pane (or via `!` shell escape in Claude Code):
-
-```bash
-# In the terminal pane or via ! in Claude Code
-approve 'bun add react'
-```
-
-Approval tokens are one-shot (consumed on use) and stored in memory (lost on restart).
+When Claude tries to run a command that requires approval, Claude Code shows its built-in permission dialog. You can approve or deny directly in the CLI — no external commands needed.
 
 ### Status and Diagnostics
 
 ```bash
-# Show approval tokens, recent iptables drops, CoreDNS status
+# Show recent iptables drops, CoreDNS status
 status
 ```
 
@@ -269,13 +262,13 @@ The machine is configured with `--restart no` and `--autostart=false`, so it sta
 - **30-minute refresh**: iptables rules are refreshed every 30 minutes to pick up IP changes
 - **IPv6 unrestricted**: Fly SSH requires public IPv6 routing, and Fly's kernel has broken IPv6 conntrack, so IPv6 output is left at ACCEPT. IPv4 iptables is the enforcement layer.
 
-### Layer 3: Command Approval
+### Layer 3: Command Classification
 
-- **PreToolUse hook**: Every Claude Code tool invocation passes through `approval/check-command.sh`
-- **Allowlist model**: `default:block` — any command not matching a rule is blocked
-- **Compound command splitting**: Commands chained with `&&`, `||`, `;`, or using `$()` / backtick subshells are split and each sub-command is evaluated independently
-- **One-shot tokens**: The `approve` command creates a hash-based token that's consumed on first use
-- **Self-approval prevention**: The `approve` command itself is blocked in rules.conf — Claude cannot approve its own commands
+- **PreToolUse hook**: Every Bash tool invocation passes through a compiled TypeScript classifier
+- **Three-tier pipeline**: Hard-block (regex) → hot-word scan (substring) → Haiku LLM classification (Anthropic SDK)
+- **Default-allow posture**: Commands without hot words are allowed (network layer is primary enforcement)
+- **Native approval UX**: Haiku's "approve" verdict triggers Claude Code's built-in permission prompt — no custom token system
+- **Credential leak prevention**: Direct references to `$GH_PAT`, `$CLAUDE_CODE_OAUTH_TOKEN`, `$ANTHROPIC_API_KEY` are hard-blocked; indirect references (variable names as strings) are escalated to Haiku
 
 ## Customization
 
@@ -285,7 +278,7 @@ Edit `network/domains.conf` to add or remove allowed domains. One domain per lin
 
 ### Changing Command Approval Rules
 
-Edit `approval/rules.conf`. Format is `tier:pattern` where tier is `allow`, `block`, or `approve`. First match wins. Patterns are extended regex matched against the command string.
+Edit `approval/rules.conf`. Three rule types: `block:` (word-boundary regex, instant deny), `block-pattern:` (full regex, instant deny), and `hot:` (substring match, escalates to Haiku). If no rule matches, the command is allowed.
 
 ### Changing the Claude Code Model
 
@@ -342,16 +335,15 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 ├── bunx            # Bun package runner
 ├── coredns         # DNS server
 ├── start-claude    # SSH login handler
-├── approve         # One-shot command approval
 ├── status          # Diagnostic tool
 ├── just            # Task runner
 └── entrypoint.sh   # Boot script
 
 /opt/
 ├── approval/
-│   ├── check-command.sh   # PreToolUse hook
-│   ├── rules.conf         # Command tier rules
-│   └── approve            # Source copy
+│   ├── check-command      # Compiled classifier binary (bun build --compile)
+│   ├── check-command.sh   # Thin wrapper that execs the binary
+│   └── rules.conf         # Block/hot-word rules
 ├── network/
 │   ├── domains.conf       # Domain allowlist
 │   ├── Corefile.template  # CoreDNS base config
@@ -371,7 +363,6 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 ├── .local/bin/claude    # Symlink → /usr/local/bin/claude
 └── .bun/bin/            # Symlinks → /usr/local/bin/bun{,x}
 
-/run/claude-approved/    # One-shot approval tokens (tmpfs)
 ```
 
 ## CI/CD
@@ -429,16 +420,12 @@ The superpowers plugin is installed on first SSH login. If it fails, check:
 
 ### Command blocked unexpectedly
 
-Check which rule matched:
+Check which rule matched by reviewing the hook's stderr logs, or inspect the rules directly:
 ```bash
-# In the terminal pane, test a command against the rules
 grep -n 'pattern' /opt/approval/rules.conf
 ```
 
-To approve a one-shot execution:
-```bash
-approve 'the exact command string'
-```
+If a command is blocked by Tier 1 (hard-block), it cannot be overridden. If it's escalated to Tier 3 (Haiku), the user will see a permission prompt and can approve or deny.
 
 ### UI rendering issues
 
