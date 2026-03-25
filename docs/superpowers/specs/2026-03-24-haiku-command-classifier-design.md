@@ -82,7 +82,9 @@ hot:pip install
 hot:pip3 install
 hot:pipx
 
-# Structural patterns that need full regex
+# Structural patterns that need full regex.
+# Note: patterns are NOT anchored by default. Add ^ explicitly for start-of-string matching.
+# Unanchored patterns match anywhere in the command (important for compound commands).
 block-pattern:.*\|\s*/?(usr/)?(s?bin/)?(ba)?sh\b
 block-pattern:.*\|\s*/?(usr/)?(s?bin/)?(python3?|node|bun|perl|ruby)\b
 block-pattern:^rm\s+-rf\s+/
@@ -102,13 +104,20 @@ All `block:` and `block-pattern:` rules are processed together in Tier 1 before 
 Invoked directly via `@anthropic-ai/sdk` using the `ANTHROPIC_API_KEY` environment variable (derived from `CLAUDE_CODE_OAUTH_TOKEN` at container startup). This avoids the overhead of spawning a `claude -p` subprocess and gives us structured JSON parsing without shell fragility.
 
 ```typescript
-const client = new Anthropic();
+const client = new Anthropic({ timeout: 15_000 }); // fail before 30s hook timeout
 const response = await client.messages.create({
   model: "claude-haiku-4-5-20251001",
   max_tokens: 256,
   messages: [{ role: "user", content: prompt }],
 });
 ```
+
+The SDK reads `ANTHROPIC_API_KEY` from the environment. The entrypoint must export it:
+```bash
+export ANTHROPIC_API_KEY="$CLAUDE_CODE_OAUTH_TOKEN"
+```
+
+**Model retirement:** If Anthropic retires `claude-haiku-4-5-20251001`, the SDK returns an API error, which triggers fail-closed behavior — all Tier 3 commands are blocked until the model string is updated.
 
 No recursion guard needed — the SDK makes a direct API call, not a Claude Code tool invocation, so the PreToolUse hook is never triggered.
 
@@ -285,8 +294,8 @@ switch (verdict.verdict) {
     console.error(`⛔ Blocked: ${verdict.reason}. Do NOT attempt to work around this.`);
     process.exit(2);
   case "approve":
-    if ("match" in verdict && existsToken(verdict.match)) {
-      consumeToken(verdict.match);
+    if ("match" in verdict && tryConsumeToken(verdict.match)) {
+      // tryConsumeToken: unlinkSync in try/catch — atomic, no TOCTOU
       console.error(`[HOOK] APPROVED (token: ${verdict.match}): ${command}`);
       process.exit(0);
     }
@@ -299,7 +308,9 @@ switch (verdict.verdict) {
 
 ### Failure Handling
 
-If the `claude -p` call fails (network error, timeout, malformed JSON response), default to block with a message asking the user to intervene. Fail closed, always.
+If the Anthropic SDK call fails (network error, timeout, malformed JSON response), default to block with a message asking the user to intervene. Fail closed, always.
+
+This also applies to rule parsing: if `new RegExp(pattern)` throws during rules.conf compilation, the hook exits 2 immediately — blocking all commands until the config is fixed. Bad regex patterns are logged to stderr for debugging.
 
 ### Logging
 
@@ -312,10 +323,10 @@ Preserve the `[HOOK]` stderr logging pattern from the current implementation. Lo
 
 ### Performance
 
-- Tier 1 + 2: sub-100ms (`grep -qF`/`grep -qE` against short keyword lists)
-- Tier 3: 1-3s (Haiku API call via `claude -p`)
+- Tier 1 + 2: sub-100ms (`RegExp.test()` and `String.includes()` against short rule lists)
+- Tier 3: 1-3s (Haiku API call via Anthropic SDK, 15s client timeout)
 - Most commands (git, ls, bun run, etc.) never reach Tier 3
-- Hook timeout: 30s (configured in claude-settings.json), sufficient for Haiku call
+- Hook timeout: 30s (configured in claude-settings.json), SDK timeout 15s ensures graceful fail-closed before hook is killed
 
 ## Security Considerations
 
