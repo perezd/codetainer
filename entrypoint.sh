@@ -13,6 +13,9 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   exit 1
 fi
 
+# Derive ANTHROPIC_API_KEY for the approval hook's Anthropic SDK usage
+export ANTHROPIC_API_KEY="$CLAUDE_CODE_OAUTH_TOKEN"
+
 # === 1. Filesystem hardening ===
 # Mount tmpfs at writable paths before anything else
 mount -t tmpfs -o size=512m tmpfs /workspace
@@ -127,11 +130,6 @@ cat > /home/claude/.npmrc <<NPMRC
 NPMRC
 chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
-
-# === 4. Approval setup ===
-# /run is already tmpfs on Linux, so it stays writable after root FS read-only remount
-mkdir -p /run/claude-approved
-chmod 1777 /run/claude-approved
 
 # === 5. Claude Code setup ===
 
