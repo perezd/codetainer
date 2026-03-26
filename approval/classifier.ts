@@ -1,4 +1,3 @@
-import { $ } from "bun";
 
 export type Verdict =
   | { verdict: "allow"; reason: string }
@@ -87,12 +86,25 @@ export async function classifyWithHaiku(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // Use claude -p which authenticates via CLAUDE_CODE_OAUTH_TOKEN natively.
-      // CLASSIFIER_HOOK=1 prevents the Stop hook's session-namer from firing.
-      const result =
-        await $`CLASSIFIER_HOOK=1 claude -p --model claude-haiku-4-5-20251001 --max-turns 1 ${prompt}`
-          .quiet()
-          .timeout(10_000)
-          .text();
+      // Pipe prompt via stdin to avoid shell argument length/escaping issues.
+      // CLAUDE_SESSION_NAMER=1 prevents the Stop hook's session-namer from firing.
+      const proc = Bun.spawn(
+        ["claude", "-p", "--model", "claude-haiku-4-5-20251001", "--max-turns", "1", "-"],
+        {
+          stdin: new TextEncoder().encode(prompt),
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { ...process.env, CLAUDE_SESSION_NAMER: "1" },
+        },
+      );
+
+      const result = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+
+      if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        throw new Error(`claude -p exited ${exitCode}: ${stderr.slice(0, 200)}`);
+      }
 
       return parseVerdict(result);
     } catch (err) {
