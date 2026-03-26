@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { $ } from "bun";
 
 export type Verdict =
   | { verdict: "allow"; reason: string }
@@ -82,25 +82,23 @@ export async function classifyWithHaiku(
   command: string,
   maxAttempts = 2,
 ): Promise<Verdict> {
-  const client = new Anthropic({ timeout: 10_000 });
+  const prompt = `${SYSTEM_PROMPT}\n\n${buildUserMessage(command)}`;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const response = await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 256,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: buildUserMessage(command) }],
-      });
+      // Use claude -p which authenticates via CLAUDE_CODE_OAUTH_TOKEN natively.
+      // CLASSIFIER_HOOK=1 prevents the Stop hook's session-namer from firing.
+      const result =
+        await $`CLASSIFIER_HOOK=1 claude -p --model claude-haiku-4-5-20251001 --max-turns 1 ${prompt}`
+          .quiet()
+          .timeout(10_000)
+          .text();
 
-      const textBlock = response.content.find((b) => b.type === "text");
-      if (!textBlock || textBlock.type !== "text") {
-        throw new Error("no text in Haiku response");
-      }
-
-      return parseVerdict(textBlock.text);
+      return parseVerdict(result);
     } catch (err) {
-      console.error(`[HOOK] Haiku attempt ${attempt}/${maxAttempts} failed: ${err}`);
+      console.error(
+        `[HOOK] Haiku attempt ${attempt}/${maxAttempts} failed: ${err}`,
+      );
       if (attempt === maxAttempts) throw err;
     }
   }

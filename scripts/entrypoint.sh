@@ -13,10 +13,6 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   exit 1
 fi
 
-# Derive ANTHROPIC_AUTH_TOKEN for the approval hook's Anthropic SDK usage
-# (OAuth tokens use authToken/ANTHROPIC_AUTH_TOKEN, not apiKey/ANTHROPIC_API_KEY)
-export ANTHROPIC_AUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"
-
 # === 1. Filesystem hardening ===
 # Mount tmpfs at writable paths before anything else
 mount -t tmpfs -o size=512m tmpfs /workspace

@@ -1,6 +1,6 @@
 # Claudetainer
 
-A hardened Docker container that runs [Claude Code](https://claude.ai/code) on [Fly.io](https://fly.io), accessible via SSH. Designed for long-running, autonomous coding sessions with three layers of security: container hardening, network isolation, and command-level approval gates.
+A hardened Docker container that runs [Claude Code](https://claude.ai/code) on [Fly.io](https://fly.io), accessible via SSH. Designed for long-running, autonomous coding sessions with three layers of security: container hardening, strict network isolation, and a command classifier/approval gate system for dangerous commands.
 
 > Quick note, this project is intended for me and my colleagues. If you find this useful, I recommend you fork it and make it your own. I'm not interested in making this general purpose. Think of this repo as "source available." If you spot a bug, of course I'd love to hear about that. Otherwise, have fun with it and make it your own.
 
@@ -268,7 +268,7 @@ The machine is configured with `--restart no` and `--autostart=false`, so it sta
 - **Three-tier pipeline**: Hard-block (regex) → hot-word scan (substring) → Haiku LLM classification (Anthropic SDK)
 - **Default-allow posture**: Commands without hot words are allowed (network layer is primary enforcement)
 - **Native approval UX**: Haiku's "approve" verdict triggers Claude Code's built-in permission prompt — no custom token system
-- **Credential leak prevention**: Direct references to `$GH_PAT`, `$CLAUDE_CODE_OAUTH_TOKEN`, `$ANTHROPIC_AUTH_TOKEN` are hard-blocked; indirect references (variable names as strings) are escalated to Haiku
+- **Credential leak prevention**: Direct references to `$GH_PAT` and `$CLAUDE_CODE_OAUTH_TOKEN` are hard-blocked; indirect references (variable names as strings) are escalated to Haiku
 
 ## Customization
 
