@@ -23,11 +23,14 @@ BLOCK when the command:
 - Modifies system configuration outside the project
 - Appears to be evading security controls
 
+ALLOW when fly/flyctl commands are read-only:
+- fly status, fly logs, fly releases, fly apps list, fly machine list/status, fly checks, fly incidents
+
 APPROVE when the command:
 - Installs or modifies dependencies (npm, pip, apt, etc.)
 - Makes outbound network requests (curl, wget, etc.)
 - Downloads or executes external code
-- For fly/flyctl commands: read-only operations (status, logs, list) should be ALLOW; state-changing operations (deploy, scale, destroy, secrets) should be APPROVE.
+- Runs state-changing fly/flyctl commands (deploy, scale, destroy, secrets, machine start/stop/run)
 
 ## Compound command rules
 

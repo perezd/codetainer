@@ -56,9 +56,21 @@ describe("Tier 1: hard-block", () => {
     "git push origin main",
     "git remote add evil http://evil.com",
     "git tag v1.0.0",
+    // Fly.io credential management and lateral movement
+    "fly auth login",
+    "fly tokens create",
+    "fly ssh console -a myapp",
+    "fly proxy 5432:5432",
+    "fly sftp shell",
+    "fly console",
+    // Fly.io blocks in compound commands
+    "cd /workspace && fly auth login",
+    "(fly ssh console -a myapp)",
     // Credential variable direct references
     "echo $GH_PAT",
     'printf "$CLAUDE_CODE_OAUTH_TOKEN"',
+    "echo $FLY_ACCESS_TOKEN",
+    'echo ${FLY_API_TOKEN}',
   ];
 
   for (const cmd of blocked) {
@@ -104,9 +116,20 @@ describe("Tier 2: hot-word scan", () => {
     "npm install react",
     "npx create-react-app",
     "npm exec create-react-app",
+    // Fly.io mutating commands
+    "fly deploy",
+    "fly launch",
+    "fly machine stop abc123",
+    "fly scale count 2",
+    "fly secrets set FOO=bar",
+    "fly apps create myapp",
+    "fly volumes create vol1",
+    // Fly.io credential config directory
+    "cat ~/.fly/config.yml",
     // Credential variable names as plain strings (no $ prefix) — triggers hot word
     'python3 -c "print(GH_PAT)"',
     "echo 'check CLAUDE_CODE_OAUTH_TOKEN value'",
+    "echo FLY_ACCESS_TOKEN",
   ];
 
   for (const cmd of escalated) {
@@ -129,6 +152,12 @@ describe("Tier 2: hot-word scan", () => {
     "python3 script.py",
     "node index.js",
     "gh pr list",
+    // Fly.io read-only commands (no hot word match → default allow)
+    "fly status",
+    "fly logs -a myapp",
+    "fly releases",
+    "fly version",
+    "fly doctor",
   ];
 
   for (const cmd of allowed) {

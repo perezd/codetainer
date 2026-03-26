@@ -220,7 +220,7 @@ Claude Code runs with `--dangerously-skip-permissions` but has a PreToolUse hook
 
 When Claude tries to run a command that requires approval, Claude Code shows its built-in permission dialog. You can approve or deny directly in the CLI — no external commands needed.
 
-**Fly.io commands:** Read-only fly commands (`fly status`, `fly logs`, `fly releases`, etc.) are allowed without approval. Mutating commands (`fly deploy`, `fly scale`, `fly secrets`, etc.) are escalated to Haiku for classification. `fly auth`, `fly tokens`, `fly ssh`, `fly proxy`, `fly sftp`, and `fly console` are hard-blocked — authenticate via `! fly auth login` in the terminal pane.
+**Fly.io commands:** Simple read-only fly commands (`fly status`, `fly logs`, `fly releases`) pass through without Haiku review. Commands involving infrastructure subcommands (`fly apps`, `fly machine`, `fly scale`, etc.) are escalated to Haiku, which classifies read-only operations (e.g., `fly apps list`) as allow and mutating operations (e.g., `fly deploy`) as approve. `fly auth`, `fly tokens`, `fly ssh`, `fly proxy`, `fly sftp`, and `fly console` are hard-blocked — authenticate via `! fly auth login` in the terminal pane.
 
 ### Status and Diagnostics
 

@@ -42,7 +42,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # Fly CLI
 RUN curl -fsSL https://fly.io/install.sh | sh \
-    && ln -s /root/.fly/bin/flyctl /usr/local/bin/fly
+    && cp -L /root/.fly/bin/flyctl /usr/local/bin/fly \
+    && chmod 755 /usr/local/bin/fly
 
 # CoreDNS
 RUN ARCH=$(dpkg --print-architecture) && \
