@@ -10,12 +10,11 @@ The container has no way to interact with Fly.io infrastructure. Operators need 
 
 ### Installation
 
-Install flyctl in the Dockerfile using the official installer. The binary installs to `/root/.fly/bin/flyctl` — symlink both `flyctl` and `fly` to `/usr/local/bin/` so they're available to the `claude` user.
+Install flyctl in the Dockerfile using the official installer. Only `fly` is symlinked to `/usr/local/bin/` — no `flyctl` alias. This halves the hot-word and block-pattern rules since we only need `^fly\s+` patterns, not `^fly(ctl)?\s+`.
 
 ```dockerfile
 # Fly CLI
 RUN curl -fsSL https://fly.io/install.sh | sh \
-    && ln -s /root/.fly/bin/flyctl /usr/local/bin/flyctl \
     && ln -s /root/.fly/bin/flyctl /usr/local/bin/fly
 ```
 
@@ -47,14 +46,14 @@ Only `api.fly.io` is needed. The bare `fly.io` domain is used for browser-based 
 
 ```conf
 # Fly.io credential management (user handles interactively)
-block-pattern:^fly(ctl)?\s+auth\b
-block-pattern:^fly(ctl)?\s+tokens?\b
+block-pattern:^fly\s+auth\b
+block-pattern:^fly\s+tokens?\b
 
 # Fly.io lateral movement (SSH/proxy/sftp to other machines)
-block-pattern:^fly(ctl)?\s+ssh\b
-block-pattern:^fly(ctl)?\s+proxy\b
-block-pattern:^fly(ctl)?\s+sftp\b
-block-pattern:^fly(ctl)?\s+console\b
+block-pattern:^fly\s+ssh\b
+block-pattern:^fly\s+proxy\b
+block-pattern:^fly\s+sftp\b
+block-pattern:^fly\s+console\b
 
 # Fly.io credential variable leak prevention
 block-pattern:\$\{?(FLY_ACCESS_TOKEN|FLY_API_TOKEN)\b
@@ -65,7 +64,6 @@ Rationale for hard-blocking `ssh`, `proxy`, `sftp`, `console`: These are lateral
 **Tier 2 (hot word):** Escalate flyctl commands to Haiku for classification.
 
 ```conf
-hot:flyctl
 hot:fly deploy
 hot:fly launch
 hot:fly machine
@@ -196,7 +194,7 @@ Fly tokens lack fine-grained scoping like GitHub's PATs. The spec documents this
 
 ## Files Changed
 
-- `Dockerfile` — add flyctl install step with symlinks for both `flyctl` and `fly`
+- `Dockerfile` — add flyctl install step with `fly` symlink (no `flyctl` alias)
 - `network/domains.conf` — add `api.fly.io`
 - `approval/rules.conf` — add hard-blocks for auth/tokens/ssh/proxy/sftp/console, add hot words for mutating subcommands and credential variables
 - `approval/classifier.ts` — add flyctl classification hint to Haiku system prompt

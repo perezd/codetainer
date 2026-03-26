@@ -40,6 +40,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Fly CLI
+RUN curl -fsSL https://fly.io/install.sh | sh \
+    && ln -s /root/.fly/bin/flyctl /usr/local/bin/fly
+
 # CoreDNS
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://github.com/coredns/coredns/releases/download/v1.12.1/coredns_1.12.1_linux_${ARCH}.tgz" \
