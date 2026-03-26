@@ -2,3 +2,7 @@
 docs
 *.md
 LICENSE
+.github
+**/__tests__/**
+Dockerfile
+.dockerignore
