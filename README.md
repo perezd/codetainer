@@ -185,7 +185,7 @@ These are set via `--env` flags on `fly machine run`. They are not sensitive and
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `GIT_USER_NAME` | No | `claudetainer` | Git commit author name |
+| `GIT_USER_NAME` | No | `claudetainer` | Git commit author name. **Must match the GitHub username/login** (not a display name) for the git push ownership exemption to work. |
 | `GIT_USER_EMAIL` | No | `claudetainer@noreply.github.com` | Git commit author email |
 | `REPO_URL` | No | _(none)_ | HTTPS URL of a GitHub repo to clone on startup. Cloned to `/workspace/repo`. Must be accessible with the `GH_PAT`. |
 
@@ -214,7 +214,7 @@ Switch panes with `Ctrl-b ↓` / `Ctrl-b ↑` or click with the mouse.
 
 Claude Code runs with `--dangerously-skip-permissions` but has a PreToolUse hook that enforces a three-tier command classification pipeline:
 
-- **Tier 1 — Hard-block** (instant): Dangerous commands that are never allowed (sudo, eval, rm -rf /, git push --force, credential leaks, etc.). **Exception:** `git push` to a remote owned by `GIT_USER_NAME` (your fork) is allowed, including force push and push to main — but `--delete` remains blocked.
+- **Tier 1 — Hard-block** (instant): Dangerous commands that are never allowed (sudo, eval, rm -rf /, git push --force, credential leaks, etc.). **Exception:** `git push` to a remote owned by `GIT_USER_NAME` (your fork) is allowed, including force push and push to main — but `--delete` remains blocked. `GIT_USER_NAME` must match the GitHub owner in the remote URL. Compound commands containing `git push` are not exempted and fall through to normal block rules.
 - **Tier 2 — Hot-word scan** (instant): If the command contains a risky keyword (curl, bun add, pip install, etc.), escalate to Tier 3. Otherwise, allow.
 - **Tier 3 — Haiku classification** (1-3s): A Haiku LLM classifies the command as allow, block, or approve. For approve, Claude Code's native permission prompt is shown to the user.
 
