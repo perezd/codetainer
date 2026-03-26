@@ -338,7 +338,7 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 ├── bun             # Bun runtime
 ├── bunx            # Bun package runner
 ├── coredns         # DNS server
-├── fly              # Fly.io CLI
+├── fly             # Fly.io CLI
 ├── start-claude    # SSH login handler
 ├── status          # Diagnostic tool
 ├── just            # Task runner
