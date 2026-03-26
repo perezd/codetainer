@@ -33,7 +33,8 @@ const GIT_PUSH_RE = /^git\s+push\b/;
 
 // Flags that consume the next token as a value (e.g., -o <value>, --repo <value>).
 // If present, we can't reliably parse the remote name, so we refuse the exemption.
-const VALUE_CONSUMING_FLAGS = /^(-o|--push-option|--repo|--receive-pack|--exec|--signed)$/;
+const VALUE_CONSUMING_FLAGS =
+  /^(-o|--push-option|--repo|--receive-pack|--exec|--signed)$/;
 
 /**
  * Parse the target remote name from a git push command string.
@@ -92,7 +93,7 @@ const HAS_DELETE_FLAG = /\s--delete\b|\s-[a-zA-Z]*d/;
  * Check if a git push command targets a remote owned by GIT_USER_NAME.
  * Returns true if the push should be exempted from block rules.
  *
- * Fail-safe: returns false on any error (missing env var, git failure,
+ * Fail-safe: returns false on any error (missing git config, git failure,
  * unparseable URL, non-GitHub host, --delete flag present).
  */
 export async function isOwnedRemotePush(command: string): Promise<boolean> {
@@ -102,10 +103,26 @@ export async function isOwnedRemotePush(command: string): Promise<boolean> {
   // --delete pushes are never exempted, even to owned remotes
   if (HAS_DELETE_FLAG.test(command)) return false;
 
-  const gitUserName = process.env.GIT_USER_NAME;
-  if (!gitUserName) return false;
-
   try {
+    // Read identity from git config (set during entrypoint from GIT_USER_NAME).
+    // We don't use process.env.GIT_USER_NAME because the env var may not be
+    // available to the approval process at runtime.
+    const configProc = Bun.spawn(["git", "config", "user.name"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [configStdout, , configExitCode] = await Promise.all([
+      new Response(configProc.stdout).text(),
+      new Response(configProc.stderr).text(),
+      configProc.exited,
+    ]);
+
+    if (configExitCode !== 0) return false;
+
+    const gitUserName = configStdout.trim();
+    if (!gitUserName) return false;
+
     // SECURITY: --push returns the URL git actually uses for push operations.
     // If pushurl is configured, --push returns pushurl (not url).
     // This ensures we check ownership against the same URL git will push to,
