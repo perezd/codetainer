@@ -13,7 +13,7 @@ Add an early-exit path in the main entry point of `check-command.ts`, before `ev
 ### Detection flow
 
 1. **Quick regex gate**: Check if the command matches `^git\s+push\b`. If not, skip entirely — zero cost for non-push commands.
-2. **Parse target remote from command**: Extract the remote name from the git push command arguments. If no remote is specified (bare `git push`), default to `origin`.
+2. **Parse target remote from command**: Tokenize the arguments after `git push`, skip any tokens starting with `-` (flags like `-u`, `--force`, `--set-upstream`). The first non-flag token is the remote name. If no non-flag positional argument exists (bare `git push`), default to `origin`.
 3. **Resolve remote push URL**: Run `git remote get-url --push <remote>` from the hook's CWD (Claude Code sets this to the workspace directory). Use `--push` to get the URL git actually uses for push operations.
 4. **Extract GitHub owner**: Parse the owner from the URL, handling both formats:
    - `https://github.com/<owner>/<repo>` (HTTPS)
@@ -56,6 +56,7 @@ The following cases must be covered:
 - Non-GitHub remote URL (e.g., GitLab) → falls through to block
 - Case-insensitive username match (`Alice` vs `alice`) → allowed
 - `git push --force origin main` with owned remote → allowed (all push block rules exempted)
+- `git push -u origin feature` with owned remote → allowed (flags before remote are skipped)
 
 ## Scope exclusions
 
