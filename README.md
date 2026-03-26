@@ -220,6 +220,8 @@ Claude Code runs with `--dangerously-skip-permissions` but has a PreToolUse hook
 
 When Claude tries to run a command that requires approval, Claude Code shows its built-in permission dialog. You can approve or deny directly in the CLI — no external commands needed.
 
+**Fly.io commands:** Read-only fly commands (`fly status`, `fly logs`, `fly releases`, etc.) are allowed without approval. Mutating commands (`fly deploy`, `fly scale`, `fly secrets`, etc.) are escalated to Haiku for classification. `fly auth`, `fly tokens`, `fly ssh`, `fly proxy`, `fly sftp`, and `fly console` are hard-blocked — authenticate via `! fly auth login` in the terminal pane.
+
 ### Status and Diagnostics
 
 ```bash
@@ -269,6 +271,7 @@ The machine is configured with `--restart no` and `--autostart=false`, so it sta
 - **Default-allow posture**: Commands without hot words are allowed (network layer is primary enforcement)
 - **Native approval UX**: Haiku's "approve" verdict triggers Claude Code's built-in permission prompt — no custom token system
 - **Credential leak prevention**: Direct references to `$GH_PAT` and `$CLAUDE_CODE_OAUTH_TOKEN` are hard-blocked; indirect references (variable names as strings) are escalated to Haiku
+- **Fly.io auth blast radius**: Fly tokens are org-scoped (unlike the fine-grained GH_PAT). An authenticated session grants access to ALL apps in the org. Use short-lived tokens (`fly tokens create --expiry 1h`) or a dedicated Fly org.
 
 ## Customization
 
@@ -334,6 +337,7 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 ├── bun             # Bun runtime
 ├── bunx            # Bun package runner
 ├── coredns         # DNS server
+├── fly              # Fly.io CLI
 ├── start-claude    # SSH login handler
 ├── status          # Diagnostic tool
 ├── just            # Task runner
@@ -432,6 +436,15 @@ The container builds tmux 3.6a from source for synchronized output support. If y
 - Ensure your local terminal supports true color (`echo $COLORTERM` should show `truecolor`)
 - Try resizing your terminal window after connecting
 - Ghostty, iTerm2, and Kitty work best; macOS Terminal.app has limited support
+
+### Fly.io authentication
+
+flyctl is not authenticated by default. To authenticate:
+```bash
+# In the terminal pane or via ! in Claude Code
+! fly auth login
+```
+The token is stored in memory (tmpfs) and lost on restart.
 
 ## License
 
