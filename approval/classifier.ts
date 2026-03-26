@@ -27,6 +27,7 @@ APPROVE when the command:
 - Installs or modifies dependencies (npm, pip, apt, etc.)
 - Makes outbound network requests (curl, wget, etc.)
 - Downloads or executes external code
+- For fly/flyctl commands: read-only operations (status, logs, list) should be ALLOW; state-changing operations (deploy, scale, destroy, secrets) should be APPROVE.
 
 ## Compound command rules
 
