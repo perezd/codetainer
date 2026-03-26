@@ -198,7 +198,12 @@ Fly tokens lack fine-grained scoping like GitHub's PATs. The spec documents this
 - `network/domains.conf` — add `api.fly.io`
 - `approval/rules.conf` — add hard-blocks for auth/tokens/ssh/proxy/sftp/console, add hot words for mutating subcommands and credential variables
 - `approval/classifier.ts` — add flyctl classification hint to Haiku system prompt
-- `README.md` — add flyctl to tooling section, file layout, and security docs
+- `README.md` — update:
+  - Add `fly` to `/usr/local/bin/` file layout
+  - Add flyctl to the "Approving Commands" section (explain Tier 1 blocks for auth/ssh/proxy and Tier 2 hot-word escalation for mutating commands)
+  - Add `api.fly.io` to the network allowlist description
+  - Add Fly auth blast radius warning to the security section (org-scoped tokens, recommended mitigations)
+  - Add `fly auth` to the troubleshooting section (user authenticates via `!` shell escape)
 
 ## Files Unchanged
 
