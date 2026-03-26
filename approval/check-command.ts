@@ -131,6 +131,13 @@ if (isMainModule) {
 
       console.error(`[HOOK] Evaluating: ${command}`);
 
+      // Pre-tier: check if this is a git push to an owned remote
+      if (await isOwnedRemotePush(command)) {
+        console.error(`[HOOK] ALLOW (owned remote): ${command}`);
+        outputDecision("allow");
+        process.exit(0);
+      }
+
       const rules = parseRules(readFileSync(RULES_FILE, "utf-8"));
       const tierResult = evaluateTiers(command, rules);
 
