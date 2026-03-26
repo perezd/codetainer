@@ -270,7 +270,7 @@ The machine is configured with `--restart no` and `--autostart=false`, so it sta
 - **Three-tier pipeline**: Hard-block (regex) → hot-word scan (substring) → Haiku LLM classification (via `claude -p` CLI subprocess)
 - **Default-allow posture**: Commands without hot words are allowed (network layer is primary enforcement)
 - **Native approval UX**: Haiku's "approve" verdict triggers Claude Code's built-in permission prompt — no custom token system
-- **Git push ownership exemption**: Before tier evaluation, `git push` commands are checked against the remote URL. If the GitHub owner in the remote matches `GIT_USER_NAME` (case-insensitive), the push is allowed — enabling the fork-branch-PR workflow. `--delete` pushes remain blocked even on owned remotes. Falls through to normal blocking on any error (fail-closed).
+- **Git push ownership exemption**: Before tier evaluation, `git push` commands are checked against the remote URL. If the GitHub owner in the remote matches `GIT_USER_NAME` (case-insensitive), the push is allowed — enabling the fork-branch-PR workflow. `--delete` pushes remain blocked even on owned remotes. Falls through to normal tier evaluation (no exemption) on any error.
 - **Credential leak prevention**: Direct references to `$GH_PAT` and `$CLAUDE_CODE_OAUTH_TOKEN` are hard-blocked; indirect references (variable names as strings) are escalated to Haiku
 - **Fly.io auth blast radius**: Fly tokens are org-scoped (unlike the fine-grained GH_PAT). An authenticated session grants access to ALL apps in the org. Use short-lived tokens (`fly tokens create --expiry 1h`) or a dedicated Fly org.
 
