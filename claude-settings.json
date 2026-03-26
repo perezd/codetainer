@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/approval/check-command.sh",
+            "command": "/opt/approval/check-command",
             "timeout": 30000
           }
         ]

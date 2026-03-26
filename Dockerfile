@@ -94,8 +94,8 @@ RUN echo 'export TERM=xterm-256color; exec /usr/local/bin/start-claude' >> /root
 COPY approval/ /opt/approval/
 RUN cd /opt/approval \
     && bun build --compile --outfile check-command check-command.ts \
-    && rm -rf node_modules __tests__ *.ts tsconfig.json package.json bun.lock \
-    && chmod +x check-command check-command.sh
+    && rm -rf node_modules __tests__ *.ts *.sh tsconfig.json package.json bun.lock \
+    && chmod +x check-command
 
 # gh wrapper (ensures GH_CONFIG_DIR is always set for Claude Code subprocesses)
 COPY scripts/gh-wrapper.sh /usr/local/bin/gh
