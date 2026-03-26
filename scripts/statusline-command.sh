@@ -2,10 +2,12 @@
 
 input=$(cat)
 
-model=$(echo "$input" | jq -r '.model.display_name // "Unknown Model"')
-session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
+model=$(echo "$input" | jq -r '.model.display_name // "Unknown Model"' 2>/dev/null) || model=""
+[ -z "$model" ] && model="Unknown Model"
+session_id=$(echo "$input" | jq -r '.session_id // "unknown"' 2>/dev/null) || session_id=""
+[ -z "$session_id" ] && session_id="unknown"
 session_name=$(tmux display-message -p '#S' 2>/dev/null || echo "$session_id")
-used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
+used=$(echo "$input" | jq -r '.context_window.used_percentage // empty' 2>/dev/null) || used=""
 
 if [ -n "$used" ]; then
   used_int=$(printf "%.0f" "$used")

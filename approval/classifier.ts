@@ -98,11 +98,14 @@ export async function classifyWithHaiku(
         },
       );
 
-      const result = await new Response(proc.stdout).text();
-      const exitCode = await proc.exited;
+      // Drain stdout and stderr concurrently to avoid pipe buffer deadlock
+      const [result, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
 
       if (exitCode !== 0) {
-        const stderr = await new Response(proc.stderr).text();
         throw new Error(`claude -p exited ${exitCode}: ${stderr.slice(0, 200)}`);
       }
 
