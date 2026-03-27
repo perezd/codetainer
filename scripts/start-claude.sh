@@ -8,18 +8,9 @@ START_LOG="/tmp/start-claude.log"
 export LANG="${LANG:-en_US.UTF-8}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
-# Build OTEL env array once for all passthrough calls (whitelist known keys only)
+# OTEL env whitelist (populated after readiness wait below)
 OTEL_ENV_ARGS=()
 OTEL_ALLOWED_KEYS="CLAUDE_CODE_ENABLE_TELEMETRY OTEL_METRICS_EXPORTER OTEL_LOGS_EXPORTER OTEL_EXPORTER_OTLP_PROTOCOL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS OTEL_LOG_USER_PROMPTS OTEL_LOG_TOOL_DETAILS"
-if [[ -f /tmp/otel/otel-env ]] && [[ ! -L /tmp/otel/otel-env ]]; then
-  while IFS='=' read -r key value; do
-    [[ -z "$key" ]] && continue
-    # Only forward whitelisted OTEL keys
-    if [[ " $OTEL_ALLOWED_KEYS " == *" $key "* ]]; then
-      OTEL_ENV_ARGS+=("$key=$value")
-    fi
-  done < /tmp/otel/otel-env
-fi
 
 # Helper to run commands as claude user with standard environment
 run_as_claude() {
@@ -85,6 +76,16 @@ done
 
 if [[ ! -f /tmp/claudetainer-ready ]]; then
   echo "WARNING: Timed out waiting for readiness (60s). Starting anyway."
+fi
+
+# Build OTEL env array after readiness (entrypoint writes otel-env before ready marker)
+if [[ -f /tmp/otel/otel-env ]] && [[ ! -L /tmp/otel/otel-env ]]; then
+  while IFS='=' read -r key value; do
+    [[ -z "$key" ]] && continue
+    if [[ " $OTEL_ALLOWED_KEYS " == *" $key "* ]]; then
+      OTEL_ENV_ARGS+=("$key=$value")
+    fi
+  done < /tmp/otel/otel-env
 fi
 
 # Determine working directory (after readiness — repo may have just been cloned)
