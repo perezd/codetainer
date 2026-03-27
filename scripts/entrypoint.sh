@@ -68,7 +68,7 @@ if [[ -n "${GRAFANA_INSTANCE_ID:-}" ]] && [[ -n "${GRAFANA_API_TOKEN:-}" ]] && [
     unset GRAFANA_HOST
   else
     echo "[ENTRYPOINT] OTEL: will allow outbound to $GRAFANA_HOST"
-    # Write to root-only directory (not world-writable /tmp) to prevent tampering
+    # Write to /tmp/otel/ (root:root, mode 700) — isolates from world-writable /tmp
     mkdir -p /tmp/otel && chmod 700 /tmp/otel
     echo "$GRAFANA_HOST" > /tmp/otel/extra-domains.conf
   fi
