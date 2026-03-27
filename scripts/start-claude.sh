@@ -7,6 +7,18 @@ CLAUDE_HOME="/home/claude"
 export LANG="${LANG:-en_US.UTF-8}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
+# Helper to run commands as claude user with standard environment
+run_as_claude() {
+  sudo -u claude \
+    HOME="$CLAUDE_HOME" \
+    PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
+    GH_CONFIG_DIR="/opt/gh-config" \
+    CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
+    LANG="$LANG" \
+    LC_ALL="$LC_ALL" \
+    "$@"
+}
+
 # If any tmux session already exists, reattach to it (session may have been renamed)
 EXISTING_SESSION=$(tmux -S "$TMUX_SOCKET" list-sessions -F '#{session_name}' 2>/dev/null | head -1)
 if [[ -n "$EXISTING_SESSION" ]]; then
@@ -63,16 +75,16 @@ if [[ -d /workspace/repo ]]; then
 fi
 
 
-# Warmup: run claude once to initialize caches, plugin loading, etc.
-echo "Warming up Claude Code..."
-sudo -u claude \
-  HOME="$CLAUDE_HOME" \
-  PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
-  GH_CONFIG_DIR="/opt/gh-config" \
-  CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
-  LANG="$LANG" \
-  LC_ALL="$LC_ALL" \
-  claude -p "respond with OK" --max-turns 1 >/dev/null 2>&1 || true
+# Install plugins (marketplace must be added first — plugin install does not clone it)
+echo "Installing plugins..."
+if run_as_claude claude plugin marketplace add anthropics/claude-plugins-official 2>&1; then
+  run_as_claude claude plugin install superpowers@claude-plugins-official 2>&1 \
+    || echo "WARNING: Plugin install failed (superpowers)" >&2
+  run_as_claude claude plugin install typescript-lsp@claude-plugins-official 2>&1 \
+    || echo "WARNING: Plugin install failed (typescript-lsp)" >&2
+else
+  echo "WARNING: Failed to add marketplace — skipping plugin install" >&2
+fi
 
 # Start Claude Code in tmux as the claude user
 sudo -u claude \
