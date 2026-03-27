@@ -160,17 +160,10 @@ NPMRC
 chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
 
-# OTEL Phase 2: Export telemetry env vars (network is now configured)
+# OTEL Phase 2: Write telemetry config for start-claude.sh (network is now configured)
+# Env vars are NOT exported into PID 1 — they are only written to the file and
+# forwarded to the claude user's process by start-claude.sh via sudo.
 if [[ -n "${GRAFANA_HOST:-}" ]]; then
-  export CLAUDE_CODE_ENABLE_TELEMETRY=1
-  export OTEL_METRICS_EXPORTER=otlp
-  export OTEL_LOGS_EXPORTER=otlp
-  export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-  export OTEL_EXPORTER_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT"
-  export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic $(echo -n "${GRAFANA_INSTANCE_ID}:${GRAFANA_API_TOKEN}" | base64 -w 0)"
-  export OTEL_LOG_USER_PROMPTS="${OTEL_LOG_USER_PROMPTS:-1}"
-  export OTEL_LOG_TOOL_DETAILS="${OTEL_LOG_TOOL_DETAILS:-1}"
-  # Write env vars to root-only dir for start-claude.sh to forward via sudo
   mkdir -p /tmp/otel && chmod 700 /tmp/otel
   (umask 077; cat > /tmp/otel/otel-env <<OTELENV
 CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -183,7 +176,7 @@ OTEL_LOG_USER_PROMPTS=${OTEL_LOG_USER_PROMPTS:-1}
 OTEL_LOG_TOOL_DETAILS=${OTEL_LOG_TOOL_DETAILS:-1}
 OTELENV
   )
-  echo "[ENTRYPOINT] OTEL telemetry enabled → ${GRAFANA_OTLP_ENDPOINT}"
+  echo "[ENTRYPOINT] OTEL telemetry enabled → host=${GRAFANA_HOST}"
 fi
 
 # === 4. Claude Code setup ===
