@@ -33,6 +33,21 @@ while IFS= read -r domain || [[ -n "$domain" ]]; do
   done
 done < "$DOMAINS_FILE"
 
+# Read optional supplementary domains (e.g., dynamically added by entrypoint)
+EXTRA_DOMAINS_FILE="/tmp/extra-domains.conf"
+if [[ -f "$EXTRA_DOMAINS_FILE" ]]; then
+  while IFS= read -r domain || [[ -n "$domain" ]]; do
+    [[ "$domain" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "$domain" ]] && continue
+    domain=$(echo "$domain" | tr -d '[:space:]')
+
+    ips=$(dig +short "$domain" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+    for ip in $ips; do
+      echo "-A OUTPUT -d $ip -j ACCEPT" >> "$RULES_FILE"
+    done
+  done < "$EXTRA_DOMAINS_FILE"
+fi
+
 echo "-A OUTPUT -p udp -j DROP" >> "$RULES_FILE"
 echo '-A OUTPUT -j NFLOG --nflog-prefix "CLAUDETAINER_DROP" --nflog-group 100' >> "$RULES_FILE"
 echo "COMMIT" >> "$RULES_FILE"
