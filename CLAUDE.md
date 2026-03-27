@@ -74,6 +74,16 @@ Every change goes through a pull request — no direct commits to main. PR descr
 - Panel review output with final sign-off (if applicable)
 - Test plan
 
+### Fork-Aware PRs
+
+Before creating a PR, detect whether the repo is a fork with an upstream parent:
+
+1. Run `gh repo view --json isFork,parent` to check.
+2. If the repo **is a fork** (i.e., `isFork` is true and `parent` exists), target the upstream parent repo. Use `gh pr create --repo <parent-owner>/<parent-repo>` so the PR is sent upstream.
+3. If the repo **is not a fork**, create the PR against the local remote origin as usual.
+
+This ensures contributions flow to the correct repository without manual intervention.
+
 ### PR Lifecycle
 
 After creating a PR, poll periodically for comments and review feedback. Address reviewer comments, push updates, and re-request review as needed. Continue polling until the PR is approved and merged, or closed. Never abandon a PR — see it through to resolution.
