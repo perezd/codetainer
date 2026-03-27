@@ -58,6 +58,15 @@ ln -sf /usr/local/bin/bunx /home/claude/.bun/bin/bunx
 
 # === 2. Network lockdown ===
 
+# OTEL Phase 1: Extract Grafana Cloud hostname for network allowlisting
+# (Phase 2 exports the OTEL env vars later, after network setup is complete)
+if [[ -n "${GRAFANA_INSTANCE_ID:-}" ]] && [[ -n "${GRAFANA_API_TOKEN:-}" ]] && [[ -n "${GRAFANA_OTLP_ENDPOINT:-}" ]]; then
+  GRAFANA_HOST=$(echo "$GRAFANA_OTLP_ENDPOINT" | sed 's|https\?://||' | cut -d/ -f1 | cut -d: -f1)
+  echo "[ENTRYPOINT] OTEL: will allow outbound to $GRAFANA_HOST"
+  # Write to supplementary domains file for iptables refresh script
+  echo "$GRAFANA_HOST" > /tmp/extra-domains.conf
+fi
+
 # Generate CoreDNS config from domains.conf
 COREFILE="/tmp/Corefile"
 cp /opt/network/Corefile.template "$COREFILE"
@@ -79,6 +88,22 @@ ${domain} {
 }
 EOF
 done < /opt/network/domains.conf
+
+# Append Grafana Cloud OTLP gateway domain (if OTEL is enabled)
+if [[ -n "${GRAFANA_HOST:-}" ]]; then
+  cat >> "$COREFILE" <<EOF
+
+${GRAFANA_HOST} {
+    bind 127.0.0.53
+    template IN AAAA {
+        rcode NOERROR
+    }
+    forward . 8.8.8.8 1.1.1.1
+    log
+    cache 300
+}
+EOF
+fi
 
 # Start CoreDNS with auto-restart
 (while true; do
@@ -127,6 +152,19 @@ cat > /home/claude/.npmrc <<NPMRC
 NPMRC
 chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
+
+# OTEL Phase 2: Export telemetry env vars (network is now configured)
+if [[ -n "${GRAFANA_HOST:-}" ]]; then
+  export CLAUDE_CODE_ENABLE_TELEMETRY=1
+  export OTEL_METRICS_EXPORTER=otlp
+  export OTEL_LOGS_EXPORTER=otlp
+  export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+  export OTEL_EXPORTER_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT"
+  export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic $(echo -n "${GRAFANA_INSTANCE_ID}:${GRAFANA_API_TOKEN}" | base64 -w 0)"
+  export OTEL_LOG_USER_PROMPTS="${OTEL_LOG_USER_PROMPTS:-1}"
+  export OTEL_LOG_TOOL_DETAILS="${OTEL_LOG_TOOL_DETAILS:-1}"
+  echo "[ENTRYPOINT] OTEL telemetry enabled → ${GRAFANA_OTLP_ENDPOINT}"
+fi
 
 # === 4. Claude Code setup ===
 
