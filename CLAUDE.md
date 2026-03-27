@@ -154,10 +154,12 @@ Container builds are manual. Never build or push Docker images.
 3. Start CoreDNS (DNS filtering)
 4. Apply iptables (network isolation)
 5. Configure git/gh/npm auth (credential setup)
-6. Copy Claude settings and plugins
+6. Copy Claude settings
 7. Remount rootfs read-only
 8. Clone repo
 9. Readiness checks
+
+Plugins are installed separately in `start-claude.sh` on first SSH connect (after marketplace initialization).
 
 This order matters. Filesystem hardening before network setup. Network setup before repo clone. Preserve this chain.
 
