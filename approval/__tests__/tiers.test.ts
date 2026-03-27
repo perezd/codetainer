@@ -18,6 +18,7 @@ describe("Tier 1: hard-block", () => {
     " exec /bin/sh", // leading whitespace
     "(exec /bin/sh)",
     "$(exec /bin/sh)",
+    "echo ok\nexec /bin/sh", // exec after newline-separated command
     "source ~/.bashrc",
     "(source ~/.bashrc)", // source in subshell
     "$(source ~/.bashrc)", // source in command substitution
