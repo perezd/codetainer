@@ -84,6 +84,15 @@ Before creating a PR, detect whether the repo is a fork with an upstream parent:
 
 This ensures contributions flow to the correct repository without manual intervention.
 
+### Syncing a Fork After Merge
+
+After a PR is merged upstream, sync the fork's main branch to pick up the merged changes:
+
+1. Sync via the GitHub API: `gh repo sync <fork-owner>/<fork-repo> --source <parent-owner>/<parent-repo> --branch main`
+2. Pull locally: `git pull origin main`
+
+This must be done after each upstream merge to keep the fork and local checkout current.
+
 ### PR Lifecycle
 
 After creating a PR, poll periodically for comments and review feedback. Address reviewer comments, push updates, and re-request review as needed. Continue polling until the PR is approved and merged, or closed. Never abandon a PR — see it through to resolution.
