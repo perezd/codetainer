@@ -2,55 +2,84 @@
 
 ## Overview
 
-Enable Claude Code's native OpenTelemetry telemetry and export metrics to Fly.io's managed Grafana system (fly-metrics.net) via an OTEL Collector sidecar process running inside the container.
+Enable Claude Code's native OpenTelemetry telemetry and export metrics to Fly.io's managed Grafana system (fly-metrics.net) via Fly's built-in Prometheus scraping.
 
-The feature is **opt-in** and **disabled by default** -- it activates only when both `OTEL_FLY_TOKEN` and `OTEL_FLY_ORG` environment variables are set.
+Claude Code has a native Prometheus exporter (`OTEL_METRICS_EXPORTER=prometheus`) that exposes a `/metrics` HTTP endpoint directly -- no sidecar or collector needed. Fly scrapes this endpoint on its own schedule.
+
+The feature is **opt-in** and **disabled by default** -- it activates only when the `OTEL_METRICS_PORT` environment variable is set.
 
 ## Architecture
+
+Fly.io's managed Prometheus is **pull-based** -- there is no remote-write endpoint. Fly scrapes a `/metrics` HTTP endpoint exposed by the application.
 
 ```
 +--------------------------------------------------+
 |  Claudetainer (Fly Machine)                      |
 |                                                  |
-|  +--------------+    OTLP/gRPC    +----------+   |
-|  |  Claude Code  | ------------->  |  otelcol |   |
-|  |              |  localhost:4317  |          |   |
-|  +--------------+                 +-----+----+   |
-|                                         |        |
+|  +--------------+                                |
+|  |  Claude Code  |                               |
+|  |              |                                |
+|  |  :${OTEL_METRICS_PORT}/metrics                |
+|  +--------------+                                |
 +--------------------------------------------------+
-                                          | Prometheus
-                                          | remote-write
-                                          v
-                              fly-metrics.net/api/v1/
-                              <org>/prometheus/api/v1/write
-                                          |
-                                          v
-                                  Fly Managed Grafana
-                                  (fly-metrics.net)
+           ^
+           | Prometheus scrape (Fly internal network)
+           |
+    Fly Managed Prometheus
+    (VictoriaMetrics)
+           |
+           v
+    Fly Managed Grafana
+    (fly-metrics.net)
 ```
 
-- Claude Code exports OTLP to `localhost:4317` (traffic never leaves the machine).
-- `otelcol` receives OTLP, batches, and remote-writes to Fly's Prometheus endpoint.
-- Only the **metrics pipeline** exports to Fly. The collector receives OTLP logs (events) from Claude Code but has no exporter configured for them -- they are silently dropped. This is a known limitation: per-tool-call events (`tool_result`), per-API-request cost breakdowns (`api_request`), and prompt events (`user_prompt`) are not available in Fly Grafana. A logs pipeline can be added later when a backend (Loki, ClickHouse, etc.) is available.
+- Claude Code exposes Prometheus metrics directly on `0.0.0.0:${OTEL_METRICS_PORT}/metrics`.
+- Fly's managed Prometheus scrapes this endpoint on its own schedule (~15s interval).
+- **No outbound network traffic** is required. No sidecar process. No new binary. Fly pulls from inside its network.
+- Only **metrics** are exported via Prometheus. OTEL logs/events (tool_result, api_request, user_prompt) are a separate signal type that Fly's Prometheus cannot store. These are not exported. A logs pipeline can be added later when a backend is available -- at that point, an OTEL Collector sidecar could be introduced to receive OTLP and fan out to multiple backends.
 
 ## Opt-in Mechanism
 
-### User-provided environment variables
+### User-provided environment variable
 
-| Variable         | Required        | Purpose                                        |
-| ---------------- | --------------- | ---------------------------------------------- |
-| `OTEL_FLY_TOKEN` | Yes (to enable) | Fly API token for Prometheus remote-write auth |
-| `OTEL_FLY_ORG`   | Yes (to enable) | Fly org slug for the metrics endpoint URL      |
+| Variable            | Required        | Purpose                                                |
+| ------------------- | --------------- | ------------------------------------------------------ |
+| `OTEL_METRICS_PORT` | Yes (to enable) | Port for the Prometheus scrape endpoint (e.g., `9091`) |
+
+A single env var controls the feature. No tokens, org slugs, or collector config needed.
+
+### Fly.io machine configuration
+
+The operator must also configure Fly to scrape the metrics port. This is done outside the container via:
+
+```bash
+# Option 1: fly.toml (if introduced later)
+# [metrics]
+# port = 9091
+# path = "/metrics"
+
+# Option 2: Machine API metadata (current deployment model)
+fly machine update <machine-id> --metadata fly_metrics_port=9091
+```
+
+The `fly machine update` approach works with the project's current CLI-based deployment (no `fly.toml`). The operator sets `OTEL_METRICS_PORT` on the machine env and configures Fly's scrape metadata -- both values must match. A mismatch results in silent failure (no metrics, no error).
 
 ### Internally set environment variables (when enabled)
 
-| Variable                       | Value                   | Purpose                                                        |
-| ------------------------------ | ----------------------- | -------------------------------------------------------------- |
-| `CLAUDE_CODE_ENABLE_TELEMETRY` | `1`                     | Tells Claude Code to emit OTEL data                            |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`  | `http://127.0.0.1:4317` | Points Claude Code at the local collector                      |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`  | `grpc`                  | Protocol for OTLP export                                       |
-| `OTEL_METRICS_EXPORTER`        | `otlp`                  | Export metrics via OTLP                                        |
-| `OTEL_LOGS_EXPORTER`           | `otlp`                  | Export events (tool_result, api_request, user_prompt) via OTLP |
+Set by `entrypoint.sh` before Claude Code launches:
+
+| Variable                        | Value                  | Purpose                                    |
+| ------------------------------- | ---------------------- | ------------------------------------------ |
+| `CLAUDE_CODE_ENABLE_TELEMETRY`  | `1`                    | Tells Claude Code to emit OTEL data        |
+| `OTEL_METRICS_EXPORTER`         | `prometheus`           | Use the native Prometheus exporter         |
+| `OTEL_EXPORTER_PROMETHEUS_HOST` | `0.0.0.0`              | Bind to all interfaces (Fly must reach it) |
+| `OTEL_EXPORTER_PROMETHEUS_PORT` | `${OTEL_METRICS_PORT}` | Port for the scrape endpoint               |
+
+### Experimental env var caveat
+
+`OTEL_EXPORTER_PROMETHEUS_HOST` and `OTEL_EXPORTER_PROMETHEUS_PORT` are marked **experimental** in the OpenTelemetry specification. The Node.js SDK (which Claude Code uses) may not honor them. If these env vars are not respected at runtime:
+
+**Fallback plan:** Introduce an OTEL Collector sidecar that receives OTLP from Claude Code on `localhost:4317` and exposes a Prometheus endpoint on the configured port. This is a strictly additive change (add binary + config) and does not alter the rest of this design. The implementation should test the direct approach first and only fall back to the collector if needed.
 
 ### Privacy controls (hardcoded OFF)
 
@@ -64,56 +93,16 @@ These are intentionally not configurable. The security model assumes telemetry s
 ### Activation logic
 
 ```bash
-if [ -n "$OTEL_FLY_TOKEN" ] && [ -n "$OTEL_FLY_ORG" ]; then
-  # generate collector config, start otelcol, set Claude Code env vars
+if [ -n "${OTEL_METRICS_PORT:-}" ]; then
+  export CLAUDE_CODE_ENABLE_TELEMETRY=1
+  export OTEL_METRICS_EXPORTER=prometheus
+  export OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0
+  export OTEL_EXPORTER_PROMETHEUS_PORT="$OTEL_METRICS_PORT"
+  echo "[ENTRYPOINT] OTEL metrics enabled on port $OTEL_METRICS_PORT"
 fi
 ```
 
-When the variables are not set, no collector starts, no OTEL env vars are injected, and Claude Code behaves exactly as it does today.
-
-## OTEL Collector Configuration
-
-Config template at `/opt/otel/otelcol-config.yaml.template`, rendered at boot via `envsubst`:
-
-```yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 127.0.0.1:4317
-
-processors:
-  batch:
-    timeout: 30s
-    send_batch_size: 1024
-
-exporters:
-  prometheusremotewrite:
-    endpoint: "https://fly-metrics.net/api/v1/${OTEL_FLY_ORG}/prometheus/api/v1/write"
-    headers:
-      Authorization: "Bearer ${OTEL_FLY_TOKEN}"
-    resource_to_telemetry_conversion:
-      enabled: true
-
-extensions:
-  health_check:
-    endpoint: 127.0.0.1:13133
-
-service:
-  extensions: [health_check]
-  pipelines:
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
-```
-
-Key decisions:
-
-- **Metrics pipeline only** -- logs and traces have no backend in Fly's Prometheus system.
-- **Batch processor** with 30s timeout balances freshness vs. network efficiency.
-- **`resource_to_telemetry_conversion`** promotes OTEL resource attributes (`service.name`, `host.name`) to Prometheus labels for Grafana queryability.
-- **Listens on `127.0.0.1` only** -- collector never accepts external traffic.
+When the variable is not set, no OTEL env vars are injected and Claude Code behaves exactly as it does today.
 
 ## What You Get in Grafana
 
@@ -125,9 +114,11 @@ Key decisions:
 | `claude_code_token_usage_tokens_total` | Counter | Token usage, segmented by type (input, output, cache_creation, cache_read) |
 | `claude_code_sessions`                 | Counter | Session count                                                              |
 
-### Segmentation labels (via resource_to_telemetry_conversion)
+### Segmentation labels
 
-Metrics can be filtered/grouped by: `model`, `app.version`, `session.id`, `user.account_uuid`, `organization.id`.
+Metrics include OTEL resource attributes as Prometheus labels: `model`, `app_version`, `session_id`, `user_account_uuid`, `organization_id`.
+
+Note: `session_id` and `user_account_uuid` are pseudonymous identifiers that could be correlated to individuals. These become visible to anyone with Grafana dashboard access. If multi-tenant Grafana access is introduced in the future, review which labels are exported.
 
 ### What you do NOT get (until a logs backend is added)
 
@@ -140,87 +131,80 @@ These are exported as OTEL log records (events), not metrics. Fly's Prometheus b
 
 ## Dockerfile Changes
 
-- Download the `otelcol` binary (linux/amd64) from official GitHub releases.
+**None.** No new binary, no config template, no image size change. The entire feature is activated via environment variables in `entrypoint.sh`.
+
+If the fallback collector approach is needed, the Dockerfile changes would be:
+
+- Download the `otelcol` binary (linux/amd64) from the official [opentelemetry-collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases) GitHub repo.
+- Pin to a specific release version with SHA256 checksum verification.
 - Place at `/usr/local/bin/otelcol`.
-- Place the config template at `/opt/otel/otelcol-config.yaml.template`.
-- Image size impact: ~50MB for the statically linked Go binary. No new runtime dependencies.
+- Image size impact: ~50MB.
 
 ## Boot Sequence Integration
 
-The OTEL setup slots into `entrypoint.sh` after network lockdown and before Claude Code settings copy:
+The OTEL setup is a simple conditional env var export in `entrypoint.sh`. It slots in **before Claude Code settings copy** (step 4 in the current sequence) so the env vars are available when Claude Code launches.
 
+```
 1. Validate secrets
 2. Mount tmpfs
 3. Start CoreDNS
 4. Apply iptables
-5. **Start OTEL Collector (if enabled)**
-6. Configure git/gh/npm auth
-7. Copy Claude settings + set OTEL env vars (if enabled)
+5. Configure git/gh/npm auth
+6. Copy Claude settings
+7. ** Set OTEL env vars (if OTEL_METRICS_PORT is set) **
 8. Remount rootfs read-only
 9. Clone repo
-10. Readiness checks (+ collector health check if enabled)
+10. Readiness checks
+```
 
-Why this position:
+No new background processes. No config files to generate. No auto-restart loops.
 
-- Network must be up first (collector needs outbound to `fly-metrics.net`).
-- Must happen before rootfs remount (config file is written to `/tmp/otel/`).
-- Must happen before Claude Code settings so OTEL env vars can be injected.
-
-Collector lifecycle:
-
-- Started in a background loop with auto-restart (same pattern as CoreDNS).
-- Config written to `/tmp/otel/otelcol-config.yaml` (tmpfs, writable).
-- Logs to `/tmp/otel/otelcol.log`.
-- Health check: `curl -s http://127.0.0.1:13133/` (collector's built-in health extension).
+The env vars are exported in the entrypoint (PID 1) shell, so they are inherited by all child processes including the Claude Code session launched via `start-claude.sh` → tmux.
 
 ## Network and Security Changes
 
 ### Domain allowlist
 
-Add `fly-metrics.net` to `network/domains.conf`.
+**No changes required.** No outbound connections are made.
 
 ### Approval rules
 
-Add `OTEL_FLY_TOKEN` to Tier 2 hot-words in `approval/rules.conf` alongside existing credential variable names. Indirect references escalate to Haiku classification.
-
-No Tier 1 hard-block needed -- the token is scoped to metrics write, lower value than `GH_PAT` or `CLAUDE_CODE_OAUTH_TOKEN`.
-
-### Token isolation
-
-- `OTEL_FLY_TOKEN` is read by `entrypoint.sh` (runs as root) and written into the collector config at `/tmp/otel/otelcol-config.yaml`.
-- It is **not** exported into Claude Code's shell environment.
-- The config file is owned by `claude` user (since otelcol runs as claude), so Claude Code could read it via `cat`. This is an accepted risk at the same exposure level as `.npmrc` which contains the GH_PAT for npm auth. The approval pipeline's Tier 2 escalation provides defense.
+**No changes required.** No credentials are involved.
 
 ### Layer impact assessment
 
-| Layer               | Impact                                                          |
-| ------------------- | --------------------------------------------------------------- |
-| Container Hardening | Minimal -- new binary, tmpfs-based config, no privilege changes |
-| Network Isolation   | One new domain added to allowlist                               |
-| Command Approval    | One new hot-word for credential protection                      |
+| Layer               | Impact                                                             |
+| ------------------- | ------------------------------------------------------------------ |
+| Container Hardening | **None** -- no new binaries, no config files, no privilege changes |
+| Network Isolation   | **None** -- no new outbound access, no domain allowlist changes    |
+| Command Approval    | **None** -- no new credentials to protect                          |
+
+### Exposed port
+
+The Prometheus scrape endpoint listens on `0.0.0.0:${OTEL_METRICS_PORT}`. This port is reachable by Fly's infrastructure for scraping. It serves read-only Prometheus metrics -- no write capability, no sensitive data beyond the metric values and labels documented above.
+
+This is the same exposure model as any Fly app that exposes an HTTP service. The port is reachable from the Fly private network (other machines in the same org), not the public internet (unless a Fly service is explicitly configured to route to it).
 
 ## Testing and Validation
 
 ### Feature-off path
 
-Deploy without `OTEL_FLY_TOKEN`/`OTEL_FLY_ORG`. Confirm: no collector process running, no OTEL env vars in Claude Code's environment, no behavior change.
+Deploy without `OTEL_METRICS_PORT`. Confirm: no OTEL env vars in Claude Code's environment, no listening port on 9091, no behavior change.
 
 ### Feature-on path
 
-Deploy with both vars set. Confirm: collector starts, health check passes at `:13133`, Claude Code has `CLAUDE_CODE_ENABLE_TELEMETRY=1` in its environment.
+Deploy with `OTEL_METRICS_PORT=9091`. Confirm: Claude Code has `CLAUDE_CODE_ENABLE_TELEMETRY=1` and `OTEL_METRICS_EXPORTER=prometheus` in its environment. Verify `:9091/metrics` responds with Prometheus exposition format.
+
+### Env var verification
+
+During implementation, test whether `OTEL_EXPORTER_PROMETHEUS_HOST` and `OTEL_EXPORTER_PROMETHEUS_PORT` are honored by Claude Code's Node.js OTEL SDK. If not, implement the collector fallback.
 
 ### Metrics flow
 
-Run a Claude Code session, then check Fly Grafana for metrics appearing under the org's Prometheus data source.
-
-### Collector resilience
-
-Kill the collector process, confirm it auto-restarts via the background loop.
-
-### Approval rule test
-
-Add test case in `approval/__tests__/` for `OTEL_FLY_TOKEN` hot-word escalation.
+1. Configure Fly to scrape the metrics port: `fly machine update <id> --metadata fly_metrics_port=9091`
+2. Run a Claude Code session.
+3. Check Fly Grafana (fly-metrics.net) for `claude_code_*` metrics appearing.
 
 ### No automated integration test
 
-The full pipeline requires a live Fly deployment with real credentials. Metrics flow validation is manual.
+The full pipeline requires a live Fly deployment. Metrics flow validation is manual. The `/metrics` endpoint can be tested locally with `curl` during development.
