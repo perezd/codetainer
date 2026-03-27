@@ -15,10 +15,11 @@ describe("Tier 1: hard-block", () => {
     "sudo rm -rf /",
     "eval 'malicious code'",
     "exec /bin/sh",
-    " exec /bin/sh",  // leading whitespace
+    " exec /bin/sh", // leading whitespace
     "(exec /bin/sh)",
     "$(exec /bin/sh)",
     "source ~/.bashrc",
+    "cd /tmp && source ~/.bashrc", // source in compound command
     "printenv",
     "approve bun add react",
     // Compound commands — unanchored word-boundary rules still catch these
@@ -74,7 +75,7 @@ describe("Tier 1: hard-block", () => {
     "echo $GH_PAT",
     'printf "$CLAUDE_CODE_OAUTH_TOKEN"',
     "echo $FLY_ACCESS_TOKEN",
-    'echo ${FLY_API_TOKEN}',
+    "echo ${FLY_API_TOKEN}",
   ];
 
   for (const cmd of blocked) {
@@ -88,12 +89,14 @@ describe("Tier 1: hard-block", () => {
     "git status",
     "ls -la",
     "cat file.txt",
-    "evaluation of results",   // "eval" as substring, not word boundary
-    "executive summary",       // "exec" as substring, not word boundary
-    "outsource project",       // "source" as substring, not word boundary
-    "echo approved",           // "approve" substring, but \bapprove\b won't match "approved"
-    "echo approval granted",   // same — not a word boundary match
-    "cd /repo && git push origin feature",  // non-destructive push in compound command
+    "evaluation of results", // "eval" as substring, not word boundary
+    "executive summary", // "exec" as substring, not word boundary
+    "outsource project", // "source" as substring, not word boundary
+    "echo approved", // "approve" substring, but \bapprove\b won't match "approved"
+    "echo approval granted", // same — not a word boundary match
+    "cd /repo && git push origin feature", // non-destructive push in compound command
+    "gh repo sync --source perezd/claudetainer --branch main", // --source flag, not shell source
+    "gh repo sync --source perezd/claudetainer --branch main && git pull origin main", // compound with --source
   ];
 
   for (const cmd of notBlocked) {
