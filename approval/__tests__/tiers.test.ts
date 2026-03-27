@@ -19,6 +19,8 @@ describe("Tier 1: hard-block", () => {
     "(exec /bin/sh)",
     "$(exec /bin/sh)",
     "source ~/.bashrc",
+    "(source ~/.bashrc)", // source in subshell
+    "$(source ~/.bashrc)", // source in command substitution
     "cd /tmp && source ~/.bashrc", // source in compound command
     "printenv",
     "approve bun add react",
