@@ -128,7 +128,7 @@ NPMRC
 chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
 
-# === 5. Claude Code setup ===
+# === 4. Claude Code setup ===
 
 # Copy settings template — claude can delete and recreate this file
 # (accepted risk: iptables is the real enforcement, hooks are defense-in-depth)
@@ -139,34 +139,12 @@ chown claude:claude /home/claude/.claude/settings.json
 echo '{"hasCompletedOnboarding": true}' > /home/claude/.claude.json
 chown claude:claude /home/claude/.claude.json
 
-# === 6. Install plugins (before FS lock — install may write to root FS) ===
-echo "[ENTRYPOINT] Installing plugins..."
-sudo -u claude \
-  HOME=/home/claude \
-  PATH="/home/claude/.local/bin:/home/claude/.bun/bin:/usr/local/bin:/usr/bin:/bin" \
-  GH_CONFIG_DIR="/opt/gh-config" \
-  CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
-  LANG="${LANG:-en_US.UTF-8}" \
-  LC_ALL="${LC_ALL:-en_US.UTF-8}" \
-  claude plugin install superpowers@claude-plugins-official 2>&1 \
-  || echo "[ENTRYPOINT] WARNING: Plugin install failed (superpowers)" >&2
-
-sudo -u claude \
-  HOME=/home/claude \
-  PATH="/home/claude/.local/bin:/home/claude/.bun/bin:/usr/local/bin:/usr/bin:/bin" \
-  GH_CONFIG_DIR="/opt/gh-config" \
-  CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
-  LANG="${LANG:-en_US.UTF-8}" \
-  LC_ALL="${LC_ALL:-en_US.UTF-8}" \
-  claude plugin install typescript-lsp@claude-plugins-official 2>&1 \
-  || echo "[ENTRYPOINT] WARNING: Plugin install failed (typescript-lsp)" >&2
-
-# === 7. Lock filesystem ===
+# === 5. Lock filesystem ===
 # After all setup, remount root as read-only
 mount -o remount,ro /
 echo "[ENTRYPOINT] Root filesystem locked (read-only)"
 
-# === 8. Clone repo (optional) ===
+# === 6. Clone repo (optional) ===
 if [[ -n "${REPO_URL:-}" ]]; then
   echo "[ENTRYPOINT] Cloning $REPO_URL..."
   # Clone as root (has access to git credentials), then give full ownership to claude
@@ -191,7 +169,7 @@ cat > /home/claude/.claude.json <<EOF
 EOF
 chown claude:claude /home/claude/.claude.json
 
-# === 9. Readiness verification ===
+# === 7. Readiness verification ===
 READY=true
 
 # CoreDNS must be running
@@ -207,26 +185,9 @@ if [[ "$RULE_COUNT" -lt 5 ]]; then
   READY=false
 fi
 
-# Settings must be seeded with plugin config
+# Settings must be present
 if [[ ! -f /home/claude/.claude/settings.json ]]; then
   echo "[ENTRYPOINT] WARN: settings.json not found" >&2
-  READY=false
-elif ! grep -q superpowers /home/claude/.claude/settings.json 2>/dev/null; then
-  echo "[ENTRYPOINT] WARN: superpowers not in settings.json" >&2
-  READY=false
-elif ! grep -q typescript-lsp /home/claude/.claude/settings.json 2>/dev/null; then
-  echo "[ENTRYPOINT] WARN: typescript-lsp not in settings.json" >&2
-  READY=false
-fi
-
-# Plugin files must be seeded
-if [[ ! -d /home/claude/.claude/plugins/cache/claude-plugins-official/superpowers ]]; then
-  echo "[ENTRYPOINT] WARN: superpowers plugin files not found" >&2
-  READY=false
-fi
-
-if [[ ! -d /home/claude/.claude/plugins/cache/claude-plugins-official/typescript-lsp ]]; then
-  echo "[ENTRYPOINT] WARN: typescript-lsp plugin files not found" >&2
   READY=false
 fi
 
