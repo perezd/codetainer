@@ -33,9 +33,9 @@ while IFS= read -r domain || [[ -n "$domain" ]]; do
   done
 done < "$DOMAINS_FILE"
 
-# Read optional supplementary domains (e.g., dynamically added by entrypoint)
-EXTRA_DOMAINS_FILE="/tmp/extra-domains.conf"
-if [[ -f "$EXTRA_DOMAINS_FILE" ]]; then
+# Read optional supplementary domains from root-only dir (written by entrypoint)
+EXTRA_DOMAINS_FILE="/tmp/otel/extra-domains.conf"
+if [[ -f "$EXTRA_DOMAINS_FILE" ]] && [[ ! -L "$EXTRA_DOMAINS_FILE" ]]; then
   while IFS= read -r domain || [[ -n "$domain" ]]; do
     [[ "$domain" =~ ^[[:space:]]*# ]] && continue
     [[ -z "$domain" ]] && continue

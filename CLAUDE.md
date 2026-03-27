@@ -162,7 +162,7 @@ Container builds are manual. Never build or push Docker images.
 11. Readiness checks
 
 Plugins are installed separately in `start-claude.sh` on first SSH connect (after marketplace initialization).
-OTEL env vars are written to `/tmp/otel-env` by the entrypoint and forwarded through `sudo` by `start-claude.sh`.
+OTEL env vars are written to `/tmp/otel/otel-env` (root-only directory, mode 700) by the entrypoint and forwarded through `sudo` by `start-claude.sh` using a key whitelist.
 
 This order matters. Filesystem hardening before network setup. Network setup before repo clone. Preserve this chain.
 

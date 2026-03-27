@@ -8,12 +8,17 @@ START_LOG="/tmp/start-claude.log"
 export LANG="${LANG:-en_US.UTF-8}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
-# Build OTEL env array once for all passthrough calls
+# Build OTEL env array once for all passthrough calls (whitelist known keys only)
 OTEL_ENV_ARGS=()
-if [[ -f /tmp/otel-env ]]; then
+OTEL_ALLOWED_KEYS="CLAUDE_CODE_ENABLE_TELEMETRY OTEL_METRICS_EXPORTER OTEL_LOGS_EXPORTER OTEL_EXPORTER_OTLP_PROTOCOL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS OTEL_LOG_USER_PROMPTS OTEL_LOG_TOOL_DETAILS"
+if [[ -f /tmp/otel/otel-env ]] && [[ ! -L /tmp/otel/otel-env ]]; then
   while IFS='=' read -r key value; do
-    OTEL_ENV_ARGS+=("$key=$value")
-  done < /tmp/otel-env
+    [[ -z "$key" ]] && continue
+    # Only forward whitelisted OTEL keys
+    if [[ " $OTEL_ALLOWED_KEYS " == *" $key "* ]]; then
+      OTEL_ENV_ARGS+=("$key=$value")
+    fi
+  done < /tmp/otel/otel-env
 fi
 
 # Helper to run commands as claude user with standard environment

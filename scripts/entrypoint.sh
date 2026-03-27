@@ -62,9 +62,16 @@ ln -sf /usr/local/bin/bunx /home/claude/.bun/bin/bunx
 # (Phase 2 exports the OTEL env vars later, after network setup is complete)
 if [[ -n "${GRAFANA_INSTANCE_ID:-}" ]] && [[ -n "${GRAFANA_API_TOKEN:-}" ]] && [[ -n "${GRAFANA_OTLP_ENDPOINT:-}" ]]; then
   GRAFANA_HOST=$(echo "$GRAFANA_OTLP_ENDPOINT" | sed 's|https\?://||' | cut -d/ -f1 | cut -d: -f1)
-  echo "[ENTRYPOINT] OTEL: will allow outbound to $GRAFANA_HOST"
-  # Write to supplementary domains file for iptables refresh script
-  echo "$GRAFANA_HOST" > /tmp/extra-domains.conf
+  # Validate hostname: alphanumeric, hyphens, dots only (prevent Corefile injection)
+  if [[ ! "$GRAFANA_HOST" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+    echo "[ENTRYPOINT] ERROR: Invalid hostname in GRAFANA_OTLP_ENDPOINT: $GRAFANA_HOST" >&2
+    unset GRAFANA_HOST
+  else
+    echo "[ENTRYPOINT] OTEL: will allow outbound to $GRAFANA_HOST"
+    # Write to root-only directory (not world-writable /tmp) to prevent tampering
+    mkdir -p /tmp/otel && chmod 700 /tmp/otel
+    echo "$GRAFANA_HOST" > /tmp/otel/extra-domains.conf
+  fi
 fi
 
 # Generate CoreDNS config from domains.conf
@@ -163,8 +170,9 @@ if [[ -n "${GRAFANA_HOST:-}" ]]; then
   export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic $(echo -n "${GRAFANA_INSTANCE_ID}:${GRAFANA_API_TOKEN}" | base64 -w 0)"
   export OTEL_LOG_USER_PROMPTS="${OTEL_LOG_USER_PROMPTS:-1}"
   export OTEL_LOG_TOOL_DETAILS="${OTEL_LOG_TOOL_DETAILS:-1}"
-  # Write env vars to file for start-claude.sh to forward via sudo
-  cat > /tmp/otel-env <<OTELENV
+  # Write env vars to root-only dir for start-claude.sh to forward via sudo
+  mkdir -p /tmp/otel && chmod 700 /tmp/otel
+  (umask 077; cat > /tmp/otel/otel-env <<OTELENV
 CLAUDE_CODE_ENABLE_TELEMETRY=1
 OTEL_METRICS_EXPORTER=otlp
 OTEL_LOGS_EXPORTER=otlp
@@ -174,7 +182,7 @@ OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic $(echo -n "${GRAFANA_INSTANCE_ID}
 OTEL_LOG_USER_PROMPTS=${OTEL_LOG_USER_PROMPTS:-1}
 OTEL_LOG_TOOL_DETAILS=${OTEL_LOG_TOOL_DETAILS:-1}
 OTELENV
-  chmod 600 /tmp/otel-env
+  )
   echo "[ENTRYPOINT] OTEL telemetry enabled → ${GRAFANA_OTLP_ENDPOINT}"
 fi
 
