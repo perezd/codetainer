@@ -206,6 +206,10 @@ These superpowers skills are mandatory process gates — not optional.
 
 When Claude is explicitly given a GitHub issue URL or reference (e.g., `#24`, `owner/repo#24`, or a full URL), the following workflow overrides apply. Do not infer an originating issue from branch names, commit messages, or other indirect context — activation requires an explicit reference.
 
+### Bug Triage
+
+When an issue is a bug, regression, or report of unexpected behavior — whether indicated by GitHub labels (e.g., `bug`, `regression`) or by the issue description — invoke `/systematic-debugging` before proceeding with the standard brainstorming workflow. Identify the root cause first, then design the fix. When it is unclear whether an issue is a bug or a feature request, default to treating it as a bug — it is lower cost to debug unnecessarily than to skip root-cause analysis on a real defect.
+
 ### Artifact Routing
 
 All design specs and implementation plans produced by the brainstorming and writing-plans skills are posted as **comments on the originating GitHub issue** instead of being written to local files. No spec or plan files are created in `docs/`. The same skills run in the same order with the same rigor — only the output destination changes.
