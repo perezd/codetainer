@@ -203,7 +203,7 @@ All design specs and implementation plans produced by the brainstorming and writ
 
 The issue accumulates comments in this order:
 
-1. **Design comment** — Posted only after the full panel review process (see Modification Protocol) completes with all experts signing off. This is a stable, reviewed artifact and should not need frequent updates.
+1. **Design comment** — The full panel review process (see Modification Protocol) **must complete with all experts signing off before this comment is posted**. Run multiple rounds if needed until the panel approves without concerns. The design comment must represent a vetted consensus, not a draft. Once posted, it is a stable artifact and should not need frequent updates.
 2. **Implementation plan comment** — Uses Markdown checkboxes (`- [ ]` / `- [x]`). As tasks are completed during execution, Claude edits this comment via `gh api` to mark items done, providing real-time progress visibility on the issue.
 3. **Supplemental comments** (only if needed) — If significant design issues are discovered during execution, post a new comment explaining what deviated and why. The original design comment is preserved as a historical record; deviations are made explicit rather than silently rewritten.
 4. **After-Action Report (AAR)** — Posted after all associated PRs are merged to main. This is the final action taken on the issue. Required sections:
