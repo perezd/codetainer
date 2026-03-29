@@ -165,6 +165,17 @@ chmod 644 /home/claude/.npmrc
 # forwarded to the claude user's process by start-claude.sh via sudo.
 if [[ -n "${GRAFANA_HOST:-}" ]]; then
   mkdir -p /tmp/otel && chmod 700 /tmp/otel
+  # Build OTEL_RESOURCE_ATTRIBUTES: auto-inject Fly identity, then append operator attrs
+  OTEL_ATTRS=""
+  [[ -n "${FLY_APP_NAME:-}" ]] && OTEL_ATTRS="fly.app_name=${FLY_APP_NAME}"
+  if [[ -n "${FLY_MACHINE_ID:-}" ]]; then
+    [[ -n "$OTEL_ATTRS" ]] && OTEL_ATTRS="${OTEL_ATTRS},"
+    OTEL_ATTRS="${OTEL_ATTRS}fly.machine_id=${FLY_MACHINE_ID}"
+  fi
+  if [[ -n "${OTEL_RESOURCE_ATTRIBUTES:-}" ]]; then
+    [[ -n "$OTEL_ATTRS" ]] && OTEL_ATTRS="${OTEL_ATTRS},"
+    OTEL_ATTRS="${OTEL_ATTRS}${OTEL_RESOURCE_ATTRIBUTES}"
+  fi
   (umask 077; cat > /tmp/otel/otel-env <<OTELENV
 CLAUDE_CODE_ENABLE_TELEMETRY=1
 OTEL_METRICS_EXPORTER=otlp
@@ -176,6 +187,10 @@ OTEL_LOG_USER_PROMPTS=${OTEL_LOG_USER_PROMPTS:-1}
 OTEL_LOG_TOOL_DETAILS=${OTEL_LOG_TOOL_DETAILS:-1}
 OTELENV
   )
+  # Append resource attributes as a separate line (only if non-empty)
+  if [[ -n "$OTEL_ATTRS" ]]; then
+    echo "OTEL_RESOURCE_ATTRIBUTES=${OTEL_ATTRS}" >> /tmp/otel/otel-env
+  fi
   echo "[ENTRYPOINT] OTEL telemetry enabled → host=${GRAFANA_HOST}"
 fi
 
