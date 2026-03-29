@@ -208,7 +208,7 @@ When Claude is explicitly given a GitHub issue URL or reference (e.g., `#24`, `o
 
 ### Bug Triage
 
-When an issue is a bug, regression, or report of unexpected behavior — whether indicated by GitHub labels (e.g., `bug`, `regression`) or by the issue description — invoke `/systematic-debugging` before proceeding with the standard brainstorming workflow. Identify the root cause first, then design the fix. When it is unclear whether an issue is a bug or a feature request, default to treating it as a bug — it is lower cost to debug unnecessarily than to skip root-cause analysis on a real defect.
+When an issue is a bug, regression, or report of unexpected behavior — whether indicated by GitHub labels (e.g., `bug`, `regression`) or by the issue description — invoke `/systematic-debugging` before proceeding with `/brainstorming` and `/writing-plans`. Identify the root cause first, then design the fix. When it is unclear whether an issue is a bug or a feature request, default to treating it as a bug — it is lower cost to debug unnecessarily than to skip root-cause analysis on a real defect.
 
 ### Artifact Routing
 
