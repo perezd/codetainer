@@ -36,9 +36,30 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-# Acquire shared lock (blocks until start-claude.sh releases its exclusive lock)
-flock -s -w 300 "$LOCK_FILE" true
+# Wait for lock file to be created by start-claude.sh (avoids implicitly creating it via flock)
+if [[ ! -f "$LOCK_FILE" ]]; then
+  for i in $(seq 1 60); do
+    [[ -f "$LOCK_FILE" ]] && break
+    sleep 1
+  done
+fi
+
+if [[ ! -f "$LOCK_FILE" ]]; then
+  echo "ERROR: Lock file $LOCK_FILE not found — initialization may not have started." >&2
+  echo "Check $START_LOG for details." >&2
+  # Kill the tail process before exiting
+  if [[ -n "$TAIL_PID" ]]; then
+    kill "$TAIL_PID" 2>/dev/null
+    wait "$TAIL_PID" 2>/dev/null
+  fi
+  exit 1
+fi
+
+# Acquire shared lock via read-only FD (blocks until start-claude.sh releases its exclusive lock)
+exec 8<"$LOCK_FILE"
+flock -s -w 300 8
 FLOCK_EXIT=$?
+exec 8<&-
 
 # Kill the tail process
 if [[ -n "$TAIL_PID" ]]; then
@@ -46,13 +67,9 @@ if [[ -n "$TAIL_PID" ]]; then
   wait "$TAIL_PID" 2>/dev/null
 fi
 
-# Check for flock failure
+# Check for flock timeout
 if [[ $FLOCK_EXIT -ne 0 ]]; then
-  if [[ ! -e "$LOCK_FILE" ]]; then
-    echo "ERROR: Lock file $LOCK_FILE not found — initialization may not have started." >&2
-  else
-    echo "ERROR: Timed out waiting for Claude to initialize (5 min)." >&2
-  fi
+  echo "ERROR: Timed out waiting for Claude to initialize (5 min)." >&2
   echo "Check $START_LOG for details." >&2
   exit 1
 fi

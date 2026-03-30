@@ -122,6 +122,8 @@ exec 1>>"$START_LOG" 2>&1
 # quotes, newlines, or shell metacharacters — reading it inside a properly quoted
 # variable avoids all escaping issues. tmux runs this script via sh -c.
 if [[ -f /tmp/claude-prompt ]]; then
+  # Symlink guard: launcher script must not be a symlink
+  [[ -L /tmp/claude-launcher.sh ]] && rm -f /tmp/claude-launcher.sh
   cat > /tmp/claude-launcher.sh <<'LAUNCHER'
 #!/usr/bin/env bash
 PROMPT=$(cat /tmp/claude-prompt)
