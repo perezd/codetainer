@@ -48,7 +48,7 @@ Select relevant flex specialists based on the nature of the change.
 
 **Process:**
 
-NOTE: Each expert MUST run as a separate subagent with a clear context. The proposal must be provided to them for extensive review.
+NOTE: Each expert MUST run as a separate subagent with a clear context. Provide each expert with the PR description, the relevant code diff and surrounding context, and any associated design/spec documents or plans for extensive review.
 
 1. Each expert evaluates the change from their perspective.
 2. Findings are ranked by severity: critical / high / medium / low.
