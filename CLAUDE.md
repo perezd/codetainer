@@ -170,9 +170,14 @@ Container builds are manual. Never build or push Docker images.
 9. Remount rootfs read-only
 10. Clone repo
 11. Readiness checks
+12. Start Claude Code — invoke `start-claude.sh` in background (flock-synchronized)
 
-Plugins are installed separately in `start-claude.sh` on first SSH connect (after marketplace initialization).
+Plugins are installed by `start-claude.sh` at boot (after marketplace initialization).
 OTEL env vars are written to `/tmp/otel/otel-env` (root-only directory, mode 700) by the entrypoint and forwarded through `sudo` by `start-claude.sh` using a key whitelist.
+
+`CLAUDE_PROMPT` (optional env var) — when set via `fly machine run --env`, the prompt is written to a temp file and passed to Claude Code at boot. The prompt hash (not content) is logged for audit. See `docs/accepted-risks.md` for associated risks.
+
+Start-claude runs as a background process after readiness, acquiring an exclusive `flock` on `/tmp/start-claude.lock` during initialization. SSH connections use `attach-claude.sh`, which waits on a shared lock until init completes, then attaches to the tmux session.
 
 This order matters. Filesystem hardening before network setup. Network setup before repo clone. Preserve this chain.
 
