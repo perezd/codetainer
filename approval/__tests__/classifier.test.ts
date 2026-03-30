@@ -8,7 +8,9 @@ describe("parseVerdict", () => {
   });
 
   test("parses block verdict", () => {
-    const v = parseVerdict('{"verdict":"block","reason":"privilege escalation"}');
+    const v = parseVerdict(
+      '{"verdict":"block","reason":"privilege escalation"}',
+    );
     expect(v).toEqual({ verdict: "block", reason: "privilege escalation" });
   });
 
@@ -18,7 +20,9 @@ describe("parseVerdict", () => {
   });
 
   test("throws on invalid verdict value", () => {
-    expect(() => parseVerdict('{"verdict":"unknown","reason":"x"}')).toThrow("invalid verdict");
+    expect(() => parseVerdict('{"verdict":"unknown","reason":"x"}')).toThrow(
+      "invalid verdict",
+    );
   });
 
   test("throws on missing reason", () => {
@@ -30,13 +34,20 @@ describe("parseVerdict", () => {
   });
 
   test("extracts JSON from text with surrounding content", () => {
-    const v = parseVerdict('Here is my response: {"verdict":"allow","reason":"safe"}\n');
+    const v = parseVerdict(
+      'Here is my response: {"verdict":"allow","reason":"safe"}\n',
+    );
     expect(v).toEqual({ verdict: "allow", reason: "safe" });
   });
 
   test("handles reason strings containing braces", () => {
-    const v = parseVerdict('{"verdict":"block","reason":"uses eval{} syntax in code"}');
-    expect(v).toEqual({ verdict: "block", reason: "uses eval{} syntax in code" });
+    const v = parseVerdict(
+      '{"verdict":"block","reason":"uses eval{} syntax in code"}',
+    );
+    expect(v).toEqual({
+      verdict: "block",
+      reason: "uses eval{} syntax in code",
+    });
   });
 });
 
