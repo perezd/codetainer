@@ -48,6 +48,8 @@ Select relevant flex specialists based on the nature of the change.
 
 **Process:**
 
+NOTE: Each expert **MUST** run as a separate subagent with a cleared context. Provide each expert with any associated design/spec documents or plans for extensive review. This could also include any associated background, such as a GitHub issue or an existing PR. Provide commits/diffs if they should be reviewed by the panel as necessary.
+
 1. Each expert evaluates the change from their perspective.
 2. Findings are ranked by severity: critical / high / medium / low.
 3. Each delivers a verdict: **approve**, **approve-with-conditions**, or **request-changes**.
@@ -55,7 +57,7 @@ Select relevant flex specialists based on the nature of the change.
 5. Iterate until all experts sign off without concerns.
 6. Unresolvable risks go to the accepted risks registry (see `docs/accepted-risks.md`).
 
-The panel is not a rubber stamp. Genuinely reason from each expert's perspective and challenge your own assumptions across rounds.
+The panel is not a rubber stamp. Genuinely reason from each expert's perspective and challenge your own assumptions across rounds. Each round should provide the subagent with the most updated version of the artifact and a brief summary of changes since the previous round.
 
 ---
 
