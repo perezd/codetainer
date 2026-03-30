@@ -36,18 +36,36 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
+# Wait for entrypoint readiness (boot may still be cloning repo, setting up network, etc.)
+READY_FILE="/tmp/claudetainer-ready"
+if [[ ! -f "$READY_FILE" ]]; then
+  for i in $(seq 1 300); do
+    [[ -f "$READY_FILE" ]] && break
+    sleep 1
+  done
+fi
+
+if [[ ! -f "$READY_FILE" ]]; then
+  echo "ERROR: Entrypoint never became ready (5 min). Boot may have failed." >&2
+  echo "Check container logs for details." >&2
+  if [[ -n "$TAIL_PID" ]]; then
+    kill "$TAIL_PID" 2>/dev/null
+    wait "$TAIL_PID" 2>/dev/null
+  fi
+  exit 1
+fi
+
 # Wait for lock file to be created by start-claude.sh (avoids implicitly creating it via flock)
 if [[ ! -f "$LOCK_FILE" ]]; then
-  for i in $(seq 1 60); do
+  for i in $(seq 1 30); do
     [[ -f "$LOCK_FILE" ]] && break
     sleep 1
   done
 fi
 
 if [[ ! -f "$LOCK_FILE" ]]; then
-  echo "ERROR: Lock file $LOCK_FILE not found — initialization may not have started." >&2
+  echo "ERROR: Lock file $LOCK_FILE not found — start-claude may have failed to launch." >&2
   echo "Check $START_LOG for details." >&2
-  # Kill the tail process before exiting
   if [[ -n "$TAIL_PID" ]]; then
     kill "$TAIL_PID" 2>/dev/null
     wait "$TAIL_PID" 2>/dev/null

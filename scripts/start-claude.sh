@@ -41,7 +41,7 @@ if [[ -L "$START_LOG" ]]; then
   rm -f "$START_LOG"
 fi
 
-# --- Set up logging (stdout/stderr to both console and log file) ---
+# --- Set up logging (stdout/stderr to both console and log file during early init) ---
 exec > >(tee -a "$START_LOG") 2>&1
 
 # --- Wait for readiness ---
