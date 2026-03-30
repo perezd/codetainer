@@ -25,9 +25,12 @@ TAIL_PID=""
 
 # Start tailing the log for progress visibility; retry if log not yet created (60s timeout)
 for i in $(seq 1 60); do
-  if [[ -f "$START_LOG" ]]; then
+  if [[ -f "$START_LOG" ]] && [[ ! -L "$START_LOG" ]]; then
     tail -f "$START_LOG" &
     TAIL_PID=$!
+    break
+  elif [[ -L "$START_LOG" ]]; then
+    echo "WARNING: Refusing to tail symlinked log file at $START_LOG" >&2
     break
   fi
   sleep 1
@@ -43,9 +46,13 @@ if [[ -n "$TAIL_PID" ]]; then
   wait "$TAIL_PID" 2>/dev/null
 fi
 
-# Check for flock timeout
+# Check for flock failure
 if [[ $FLOCK_EXIT -ne 0 ]]; then
-  echo "ERROR: Timed out waiting for Claude to initialize (5 min)." >&2
+  if [[ ! -e "$LOCK_FILE" ]]; then
+    echo "ERROR: Lock file $LOCK_FILE not found — initialization may not have started." >&2
+  else
+    echo "ERROR: Timed out waiting for Claude to initialize (5 min)." >&2
+  fi
   echo "Check $START_LOG for details." >&2
   exit 1
 fi

@@ -51,7 +51,7 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Affected layer:** Container Hardening
 - **Description:** `CLAUDE_PROMPT` is passed as a plain-text environment variable via `fly machine run --env`. It is visible through `fly machine status` and the Machines API to anyone with Fly app access. Typical usage is passing a GitHub issue URL, which has minimal sensitivity.
 - **Why it can't be resolved:** Fly.io `--env` values are inherently visible via the API. Using `fly secrets set` would make prompts app-scoped (shared across machines), which breaks per-machine prompt differentiation.
-- **Compensating controls:** Inside the container, the prompt is delivered via a temp file (mode 600, deleted after read) — not as a CLI argument — to avoid `/proc/cmdline` exposure. The prompt value is never logged; only its SHA-256 hash is recorded. Documentation advises limiting prompts to issue URLs or similarly low-sensitivity content.
+- **Compensating controls:** Inside the container, the prompt is delivered via a temp file (mode 600, deleted after read). The file avoids embedding the prompt in shell command strings, but the launcher script passes it as a positional argument to `claude`, making it visible in `/proc/<pid>/cmdline` while Claude is running. This is accepted because only root and the `claude` user (UID 1000) exist in the container — both already have access to the prompt through normal operation. The prompt value is never logged; only its SHA-256 hash is recorded. Documentation advises limiting prompts to issue URLs or similarly low-sensitivity content.
 - **Severity:** Low
 - **Date identified:** 2026-03-30 (identified during panel review of #23)
 

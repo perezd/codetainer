@@ -29,6 +29,10 @@ run_as_claude() {
 }
 
 # --- Acquire exclusive lock (attach-claude.sh blocks on shared lock until released) ---
+# Symlink guard: lock file must not be a symlink
+if [[ -L "$LOCK_FILE" ]]; then
+  rm -f "$LOCK_FILE"
+fi
 exec 9>"$LOCK_FILE"
 flock -x 9
 
@@ -62,6 +66,10 @@ if [[ -f /tmp/otel/otel-env ]] && [[ ! -L /tmp/otel/otel-env ]]; then
 fi
 
 # --- Write tmux config (optimized for Claude Code TUI over SSH) ---
+# Symlink guard: tmux config must not be a symlink
+if [[ -L /tmp/.tmux.conf ]]; then
+  rm -f /tmp/.tmux.conf
+fi
 cat > /tmp/.tmux.conf <<'TMUX'
 set -g status off
 set -g remain-on-exit off
