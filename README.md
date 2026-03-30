@@ -19,16 +19,17 @@ You (local machine)
 │  ├── CoreDNS (domain allowlist DNS)                 │
 │  ├── iptables (OUTPUT DROP + IP allowlist)          │
 │  ├── tmpfs mounts (/workspace, /home/claude, /tmp)  │
-│  └── read-only root filesystem                      │
-│                                                     │
-│  On SSH login:                                      │
-│  └── start-claude → tmux session                    │
+│  ├── read-only root filesystem                      │
+│  └── start-claude → tmux session (at boot)          │
 │      ├── Claude Code (top pane, 80%)                │
 │      └── Terminal shell (bottom pane, 20%)          │
+│                                                     │
+│  On SSH login:                                      │
+│  └── attach-claude → attaches to tmux session       │
 └─────────────────────────────────────────────────────┘
 ```
 
-When you SSH in, `start-claude` runs automatically. It creates a tmux session with Claude Code in the top pane and a shell in the bottom pane. Subsequent SSH sessions reattach to the same tmux session.
+Claude Code starts automatically at boot inside a tmux session. When you SSH in, `attach-claude` connects you to the already-running session. Subsequent SSH sessions reattach to the same tmux session.
 
 ## Prerequisites
 
@@ -103,6 +104,24 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
   --env GIT_USER_EMAIL="my-robot@users.noreply.github.com" \
   --env REPO_URL="https://github.com/your-org/your-repo"
 ```
+
+To give Claude an immediate task, add an initialization prompt:
+
+```bash
+fly machine run ghcr.io/perezd/claudetainer:latest \
+  --app <your-app-name> \
+  --region <your-region> \
+  --restart no \
+  --autostart=false \
+  --vm-memory 1024 \
+  --vm-size shared-cpu-1x \
+  --env GIT_USER_NAME="my-robot" \
+  --env GIT_USER_EMAIL="my-robot@users.noreply.github.com" \
+  --env REPO_URL="https://github.com/your-org/your-repo" \
+  --env CLAUDE_PROMPT="https://github.com/your-org/your-repo/issues/42"
+```
+
+Claude will begin working on the prompt as soon as the container is ready, before you SSH in. When you connect, you'll attach to the in-progress session.
 
 **Option B: Build from Dockerfile (customizable)**
 
@@ -211,25 +230,25 @@ See [Telemetry](#telemetry-optional) below for what gets exported and privacy co
 
 These are set via `--env` flags on `fly machine run`. They are not sensitive and don't need to be secrets.
 
-| Variable                   | Required | Default                           | Description                                                                                                                                                                                             |
-| -------------------------- | -------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GIT_USER_NAME`            | No       | `claudetainer`                    | Git commit author name. **Must match the GitHub username/login** (not a display name) for the git push ownership exemption to work.                                                                     |
-| `GIT_USER_EMAIL`           | No       | `claudetainer@noreply.github.com` | Git commit author email                                                                                                                                                                                 |
-| `REPO_URL`                 | No       | _(none)_                          | HTTPS URL of a GitHub repo to clone on startup. Cloned to `/workspace/repo`. Must be accessible with the `GH_PAT`.                                                                                      |
-| `OTEL_LOG_USER_PROMPTS`    | No       | `1`                               | Set to `0` to exclude user prompt content from telemetry events (only prompt length is recorded). Requires Grafana Cloud telemetry to be enabled.                                                       |
-| `OTEL_LOG_TOOL_DETAILS`    | No       | `1`                               | Set to `0` to exclude tool parameters from telemetry events (only tool name is recorded). Requires Grafana Cloud telemetry to be enabled.                                                               |
-| `OTEL_RESOURCE_ATTRIBUTES` | No       | _(auto: Fly identity)_            | Comma-separated `key=value` pairs added to all metrics and events. `fly.app_name` and `fly.machine_id` are auto-injected; operator values are appended. Requires Grafana Cloud telemetry to be enabled. |
+| Variable                   | Required | Default                           | Description                                                                                                                                                                                                                                         |
+| -------------------------- | -------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GIT_USER_NAME`            | No       | `claudetainer`                    | Git commit author name. **Must match the GitHub username/login** (not a display name) for the git push ownership exemption to work.                                                                                                                 |
+| `GIT_USER_EMAIL`           | No       | `claudetainer@noreply.github.com` | Git commit author email                                                                                                                                                                                                                             |
+| `REPO_URL`                 | No       | _(none)_                          | HTTPS URL of a GitHub repo to clone on startup. Cloned to `/workspace/repo`. Must be accessible with the `GH_PAT`.                                                                                                                                  |
+| `CLAUDE_PROMPT`            | No       | _(none)_                          | Initialization prompt for Claude Code. When set, Claude immediately begins working on this prompt at boot. Typically a GitHub issue URL (e.g., `https://github.com/org/repo/issues/42`). Visible via `fly machine status` — do not include secrets. |
+| `OTEL_LOG_USER_PROMPTS`    | No       | `1`                               | Set to `0` to exclude user prompt content from telemetry events (only prompt length is recorded). Requires Grafana Cloud telemetry to be enabled.                                                                                                   |
+| `OTEL_LOG_TOOL_DETAILS`    | No       | `1`                               | Set to `0` to exclude tool parameters from telemetry events (only tool name is recorded). Requires Grafana Cloud telemetry to be enabled.                                                                                                           |
+| `OTEL_RESOURCE_ATTRIBUTES` | No       | _(auto: Fly identity)_            | Comma-separated `key=value` pairs added to all metrics and events. `fly.app_name` and `fly.machine_id` are auto-injected; operator values are appended. Requires Grafana Cloud telemetry to be enabled.                                             |
 
 ## Usage
 
 ### Connecting
 
 ```bash
-# First connection (creates tmux session, installs plugins, launches Claude Code)
+# Claude starts automatically at boot — SSH attaches to the running session
 fly ssh console -a <your-app-name>
 
-# Subsequent connections (reattaches to existing tmux session)
-fly ssh console -a <your-app-name>
+# If Claude is still initializing, you'll see boot progress until it's ready
 ```
 
 ### tmux Layout
@@ -420,14 +439,17 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 8. Copies Claude Code settings, skips onboarding wizard
 9. Remounts root filesystem read-only
 10. Clones `REPO_URL` if set
-11. Sleeps forever, waiting for SSH connections
+11. Runs readiness checks
+12. Starts Claude Code in background (start-claude.sh — installs plugins, creates tmux session)
+13. Waits for SSH connections
 
 ### SSH Login Flow
 
 1. `fly ssh console` connects to the container as root
-2. `.bashrc` runs `start-claude`
-3. If a tmux session exists, reattaches to it
-4. Otherwise: verifies auth token, installs plugins, creates tmux session with Claude Code + terminal pane, attaches
+2. `.bashrc` runs `attach-claude`
+3. If a tmux session exists, attaches to it immediately
+4. If initialization is still running, shows boot progress (tail of log) and waits for completion via flock
+5. Once init completes, attaches to the tmux session
 
 ### Source Repository Layout
 
@@ -474,15 +496,16 @@ claudetainer/
 
 All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Docker build.
 
-| Script                      | Description                                                                                                                                                                                                                                                                      |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`entrypoint.sh`**         | PID 1 boot script. Runs as root. Validates secrets, mounts tmpfs, starts CoreDNS, applies iptables, configures git/gh/npm auth, installs plugins, remounts rootfs read-only, clones the repo, and runs readiness checks. See [Boot Sequence](#boot-sequence) for the full order. |
-| **`start-claude.sh`**       | SSH login handler (invoked by `.bashrc`). If a tmux session exists, reattaches to it. Otherwise, waits for entrypoint readiness, warms up Claude Code, creates a tmux session with Claude Code in the top pane (80%) and a bash shell in the bottom pane (20%), then attaches.   |
-| **`refresh-iptables.sh`**   | Resolves every domain in `network/domains.conf` to IPs via `dig`, builds an iptables ruleset with OUTPUT DROP default policy and ACCEPT rules for resolved IPs, then atomically applies it with `iptables-restore`. Called once at boot and every 5 minutes thereafter.          |
-| **`gh-wrapper.sh`**         | Thin wrapper around `/usr/bin/gh` that hardcodes `GH_CONFIG_DIR=/opt/gh-config`. Needed because Claude Code's subprocess chain can strip environment variables, which would break `gh` authentication. Installed as `/usr/local/bin/gh` to shadow the real binary.               |
-| **`session-namer.sh`**      | Claude Code Stop hook. After the first assistant response in a session, sends the session context to Haiku to generate a short kebab-case name (e.g., `fixing-auth-bug`), then renames the tmux session. Uses a sentinel file to run only once per session.                      |
-| **`statusline-command.sh`** | Claude Code status line hook. Renders the current model name, a context window usage bar (color-coded green/yellow/red), and the tmux session name. Output appears in Claude Code's status line.                                                                                 |
-| **`status.sh`**             | Diagnostic tool available as the `status` command inside the container. Shows recent iptables drops (from dmesg) and CoreDNS process status.                                                                                                                                     |
+| Script                      | Description                                                                                                                                                                                                                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`entrypoint.sh`**         | PID 1 boot script. Runs as root. Validates secrets, mounts tmpfs, starts CoreDNS, applies iptables, configures git/gh/npm auth, installs plugins, remounts rootfs read-only, clones the repo, and runs readiness checks. See [Boot Sequence](#boot-sequence) for the full order.     |
+| **`start-claude.sh`**       | Init-only boot script (invoked by `entrypoint.sh`). Acquires exclusive flock, waits for readiness, writes `CLAUDE_PROMPT` to temp file (if set), installs plugins, creates tmux session with Claude Code (top pane, 80%) and bash shell (bottom pane, 20%). Releases lock when done. |
+| **`attach-claude.sh`**      | SSH login handler (invoked by `.bashrc`). If a tmux session exists, attaches immediately. Otherwise, waits for `start-claude.sh` to complete via shared flock (5-min timeout), tailing the boot log for progress, then attaches.                                                     |
+| **`refresh-iptables.sh`**   | Resolves every domain in `network/domains.conf` to IPs via `dig`, builds an iptables ruleset with OUTPUT DROP default policy and ACCEPT rules for resolved IPs, then atomically applies it with `iptables-restore`. Called once at boot and every 5 minutes thereafter.              |
+| **`gh-wrapper.sh`**         | Thin wrapper around `/usr/bin/gh` that hardcodes `GH_CONFIG_DIR=/opt/gh-config`. Needed because Claude Code's subprocess chain can strip environment variables, which would break `gh` authentication. Installed as `/usr/local/bin/gh` to shadow the real binary.                   |
+| **`session-namer.sh`**      | Claude Code Stop hook. After the first assistant response in a session, sends the session context to Haiku to generate a short kebab-case name (e.g., `fixing-auth-bug`), then renames the tmux session. Uses a sentinel file to run only once per session.                          |
+| **`statusline-command.sh`** | Claude Code status line hook. Renders the current model name, a context window usage bar (color-coded green/yellow/red), and the tmux session name. Output appears in Claude Code's status line.                                                                                     |
+| **`status.sh`**             | Diagnostic tool available as the `status` command inside the container. Shows recent iptables drops (from dmesg) and CoreDNS process status.                                                                                                                                         |
 
 ### File Layout (in container)
 
@@ -494,7 +517,8 @@ All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Do
 ├── coredns           # DNS server
 ├── fly               # Fly.io CLI
 ├── gh                # gh-wrapper.sh (shadows /usr/bin/gh)
-├── start-claude      # SSH login handler (start-claude.sh)
+├── attach-claude     # SSH attach gate (attach-claude.sh)
+├── start-claude      # Init-only boot script (start-claude.sh)
 ├── status            # Diagnostic tool (status.sh)
 ├── just              # Task runner
 └── entrypoint.sh     # Boot script

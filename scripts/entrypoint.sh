@@ -271,9 +271,12 @@ else
   touch /tmp/claudetainer-ready
 fi
 
-echo "[ENTRYPOINT] Waiting for SSH connections..."
+# Start Claude Code initialization in background (synchronized via flock)
+echo "[ENTRYPOINT] Starting Claude Code initialization..."
+/usr/local/bin/start-claude &
+
 echo "[ENTRYPOINT] Run 'fly ssh console -a <app>' to connect."
 
 # Keep the container alive — bash stays as PID 1 to reap zombie children
-# (CoreDNS restart loop and iptables refresh loop are background subshells)
+# (CoreDNS restart loop, iptables refresh loop, and start-claude are background subshells)
 wait

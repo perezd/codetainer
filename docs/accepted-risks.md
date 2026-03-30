@@ -28,6 +28,33 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Severity:** Medium
 - **Date identified:** 2025 (pre-existing, documented in README)
 
+### Unattended autonomous execution with repo credentials
+
+- **Affected layer:** All three (Container Hardening, Network Isolation, Command Approval)
+- **Description:** When `CLAUDE_PROMPT` is set, Claude operates autonomously with full `GH_PAT` and `CLAUDE_CODE_OAUTH_TOKEN` access before a human connects via SSH. `--dangerously-skip-permissions` is active. The operator is expected to SSH in to observe — this is not a fully headless mode.
+- **Why it can't be resolved:** Immediate tasking at boot is the core value of the feature. Requiring SSH before Claude starts would defeat the purpose.
+- **Compensating controls:** Network isolation limits exfiltration targets. Command approval blocks dangerous commands. The `gh api` hot word ensures Haiku reviews arbitrary GitHub API calls. Users always SSH in to observe and interact. The prompt's SHA-256 hash is logged at boot for audit correlation.
+- **Severity:** Medium
+- **Date identified:** 2026-03-30 (identified during panel review of #23)
+
+### Prompt injection via CLAUDE_PROMPT
+
+- **Affected layer:** Command Approval
+- **Description:** A crafted `CLAUDE_PROMPT` value could attempt to instruct Claude to bypass security controls or exfiltrate data within allowed network paths. The operator who sets `CLAUDE_PROMPT` has the same trust level as someone with `FLY_ACCESS_TOKEN` — they can already SSH in and direct the agent interactively.
+- **Why it can't be resolved:** Prompt validation or signing would add complexity without meaningful security benefit — the operator is already trusted at the same level as the env var they're setting.
+- **Compensating controls:** Network isolation, command approval (including `gh api` hot-wording), and Claude Code's own safety training. Operator-as-adversary shares the same trust boundary as `FLY_ACCESS_TOKEN`.
+- **Severity:** Medium
+- **Date identified:** 2026-03-30 (identified during panel review of #23)
+
+### CLAUDE_PROMPT visible via Fly Machines API
+
+- **Affected layer:** Container Hardening
+- **Description:** `CLAUDE_PROMPT` is passed as a plain-text environment variable via `fly machine run --env`. It is visible through `fly machine status` and the Machines API to anyone with Fly app access. Typical usage is passing a GitHub issue URL, which has minimal sensitivity.
+- **Why it can't be resolved:** Fly.io `--env` values are inherently visible via the API. Using `fly secrets set` would make prompts app-scoped (shared across machines), which breaks per-machine prompt differentiation.
+- **Compensating controls:** Inside the container, the prompt is delivered via a temp file (mode 600, deleted after read). The file avoids embedding the prompt in shell command strings, but the launcher script passes it as a positional argument to `claude`, making it visible in `/proc/<pid>/cmdline` while Claude is running. This is accepted because only root and the `claude` user (UID 1000) exist in the container — both already have access to the prompt through normal operation. The prompt value is never logged; only its SHA-256 hash is recorded. Documentation advises limiting prompts to issue URLs or similarly low-sensitivity content.
+- **Severity:** Low
+- **Date identified:** 2026-03-30 (identified during panel review of #23)
+
 ---
 
 ## Resolved Risks

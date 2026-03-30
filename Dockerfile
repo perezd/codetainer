@@ -89,12 +89,16 @@ USER claude
 RUN claude install 2>/dev/null || true
 USER root
 
-# Start-claude script: handles auth, tmux creation, and attach
+# Start-claude script: init-only, called by entrypoint at boot
 COPY scripts/start-claude.sh /usr/local/bin/start-claude
 RUN chmod +x /usr/local/bin/start-claude
 
-# Run start-claude on SSH login (handles auth + tmux attach/create)
-RUN echo 'export TERM=xterm-256color; exec /usr/local/bin/start-claude' >> /root/.bashrc
+# Attach-claude script: SSH gate-then-attach, waits for init via flock
+COPY scripts/attach-claude.sh /usr/local/bin/attach-claude
+RUN chmod +x /usr/local/bin/attach-claude
+
+# Run attach-claude on SSH login (waits for init, then attaches to tmux)
+RUN echo 'exec /usr/local/bin/attach-claude' >> /root/.bashrc
 
 # Approval system
 COPY approval/ /opt/approval/

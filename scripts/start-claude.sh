@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+# Init-only boot script — called once by entrypoint, not from SSH.
+# Acquires exclusive flock during init; attach-claude.sh waits on shared lock.
 
 TMUX_SOCKET="/tmp/tmux-1000/default"
 CLAUDE_HOME="/home/claude"
 START_LOG="/tmp/start-claude.log"
+LOCK_FILE="/tmp/start-claude.lock"
 
 # Ensure UTF-8 locale for TUI rendering (box-drawing chars, logo, etc.)
 export LANG="${LANG:-en_US.UTF-8}"
@@ -25,31 +28,48 @@ run_as_claude() {
     "$@"
 }
 
-# If any tmux session already exists, reattach to it (session may have been renamed)
-EXISTING_SESSION=$(tmux -S "$TMUX_SOCKET" list-sessions -F '#{session_name}' 2>/dev/null | head -1)
-if [[ -n "$EXISTING_SESSION" ]]; then
-  tmux -S "$TMUX_SOCKET" select-pane -t "$EXISTING_SESSION.0" 2>/dev/null || true
-  exec tmux -S "$TMUX_SOCKET" attach -t "$EXISTING_SESSION"
+# --- Acquire exclusive lock (attach-claude.sh blocks on shared lock until released) ---
+# Symlink guard: lock file must not be a symlink
+if [[ -L "$LOCK_FILE" ]]; then
+  rm -f "$LOCK_FILE"
+fi
+exec 9>"$LOCK_FILE"
+flock -x 9
+
+# --- Symlink guard: log file must not be a symlink ---
+if [[ -L "$START_LOG" ]]; then
+  rm -f "$START_LOG"
 fi
 
-# Log first-connect output for debugging (visible on terminal and persisted to file)
-exec 3>&1 4>&2
+# --- Set up logging (stdout/stderr to both console and log file during early init) ---
 exec > >(tee -a "$START_LOG") 2>&1
 
-# Check that the OAuth token is available
-if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
-  echo ""
-  echo "ERROR: CLAUDE_CODE_OAUTH_TOKEN is not set."
-  echo ""
-  echo "To authenticate:"
-  echo "  1. Run 'claude setup-token' on your local machine"
-  echo "  2. fly secrets set CLAUDE_CODE_OAUTH_TOKEN=<token> -a <app>"
-  echo "  3. Restart the machine"
-  echo ""
-  exit 1
+# --- Wait for readiness ---
+echo "Waiting for claudetainer to be ready..."
+for i in $(seq 1 60); do
+  [[ -f /tmp/claudetainer-ready ]] && break
+  sleep 1
+done
+
+if [[ ! -f /tmp/claudetainer-ready ]]; then
+  echo "WARNING: Timed out waiting for readiness (60s). Starting anyway."
 fi
 
-# Write tmux config (optimized for Claude Code TUI over SSH)
+# --- Build OTEL env array (entrypoint writes otel-env before ready marker) ---
+if [[ -f /tmp/otel/otel-env ]] && [[ ! -L /tmp/otel/otel-env ]]; then
+  while IFS='=' read -r key value; do
+    [[ -z "$key" ]] && continue
+    if [[ " $OTEL_ALLOWED_KEYS " == *" $key "* ]]; then
+      OTEL_ENV_ARGS+=("$key=$value")
+    fi
+  done < /tmp/otel/otel-env
+fi
+
+# --- Write tmux config (optimized for Claude Code TUI over SSH) ---
+# Symlink guard: tmux config must not be a symlink
+if [[ -L /tmp/.tmux.conf ]]; then
+  rm -f /tmp/.tmux.conf
+fi
 cat > /tmp/.tmux.conf <<'TMUX'
 set -g status off
 set -g remain-on-exit off
@@ -67,35 +87,23 @@ set -ga terminal-overrides ",*:Smulx=\E[4::%p1%dm"
 set -ga terminal-overrides ",*:Setulc=\E[58::2::%p1%{65536}%/%d::%p1%{256}%/%{255}%&%d::%p1%{255}%&%d%;m"
 TMUX
 
-# Wait for entrypoint to finish setup (repo clone, plugins, network)
-echo "Waiting for claudetainer to be ready..."
-for i in $(seq 1 60); do
-  [[ -f /tmp/claudetainer-ready ]] && break
-  sleep 1
-done
-
-if [[ ! -f /tmp/claudetainer-ready ]]; then
-  echo "WARNING: Timed out waiting for readiness (60s). Starting anyway."
+# --- Write CLAUDE_PROMPT to temp file if set ---
+if [[ -n "${CLAUDE_PROMPT:-}" ]]; then
+  [[ -L /tmp/claude-prompt ]] && rm -f /tmp/claude-prompt
+  printf '%s' "$CLAUDE_PROMPT" > /tmp/claude-prompt
+  chown claude:claude /tmp/claude-prompt
+  chmod 600 /tmp/claude-prompt
+  PROMPT_HASH=$(sha256sum < /tmp/claude-prompt | awk '{print $1}')
+  echo "CLAUDE_PROMPT set (sha256: $PROMPT_HASH)"
 fi
 
-# Build OTEL env array after readiness (entrypoint writes otel-env before ready marker)
-if [[ -f /tmp/otel/otel-env ]] && [[ ! -L /tmp/otel/otel-env ]]; then
-  while IFS='=' read -r key value; do
-    [[ -z "$key" ]] && continue
-    if [[ " $OTEL_ALLOWED_KEYS " == *" $key "* ]]; then
-      OTEL_ENV_ARGS+=("$key=$value")
-    fi
-  done < /tmp/otel/otel-env
-fi
-
-# Determine working directory (after readiness — repo may have just been cloned)
+# --- Determine working directory (after readiness — repo may have just been cloned) ---
 WORK_DIR="/workspace"
 if [[ -d /workspace/repo ]]; then
   WORK_DIR="/workspace/repo"
 fi
 
-
-# Install plugins (marketplace must be added first — plugin install does not clone it)
+# --- Install plugins (marketplace must be added first) ---
 echo "Installing plugins..."
 if run_as_claude claude plugin marketplace add anthropics/claude-plugins-official 2>&1; then
   run_as_claude claude plugin install superpowers@claude-plugins-official 2>&1 \
@@ -106,10 +114,30 @@ else
   echo "WARNING: Failed to add marketplace — skipping plugin install" >&2
 fi
 
-# Restore original stdout/stderr before tmux (tee would interfere with TUI)
-exec 1>&3 2>&4 3>&- 4>&-
+# --- Redirect to log file before tmux (tee process substitution would interfere with TUI) ---
+exec 1>>"$START_LOG" 2>&1
 
-# Start Claude Code in tmux as the claude user
+# --- Build claude command (with prompt if available) ---
+# Write a launcher script to handle prompt delivery safely. The prompt may contain
+# quotes, newlines, or shell metacharacters — reading it inside a properly quoted
+# variable avoids all escaping issues. tmux runs this script via sh -c.
+if [[ -f /tmp/claude-prompt ]]; then
+  # Symlink guard: launcher script must not be a symlink
+  [[ -L /tmp/claude-launcher.sh ]] && rm -f /tmp/claude-launcher.sh
+  cat > /tmp/claude-launcher.sh <<'LAUNCHER'
+#!/usr/bin/env bash
+PROMPT=$(cat /tmp/claude-prompt)
+rm -f /tmp/claude-prompt
+exec claude --dangerously-skip-permissions "$PROMPT"
+LAUNCHER
+  chown claude:claude /tmp/claude-launcher.sh
+  chmod 700 /tmp/claude-launcher.sh
+  CLAUDE_CMD="bash /tmp/claude-launcher.sh"
+else
+  CLAUDE_CMD="claude --dangerously-skip-permissions"
+fi
+
+# --- Start Claude Code in tmux as the claude user ---
 sudo -u claude \
   HOME="$CLAUDE_HOME" \
   PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
@@ -121,9 +149,9 @@ sudo -u claude \
   "${OTEL_ENV_ARGS[@]}" \
   tmux -f /tmp/.tmux.conf new-session -d -s claude \
     -c "$WORK_DIR" \
-    "claude --dangerously-skip-permissions"
+    "$CLAUDE_CMD"
 
-# Add a terminal pane below Claude Code (20% height)
+# --- Add a terminal pane below Claude Code (20% height) ---
 sudo -u claude \
   HOME="$CLAUDE_HOME" \
   PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
@@ -134,8 +162,8 @@ sudo -u claude \
   "${OTEL_ENV_ARGS[@]}" \
   tmux -S "$TMUX_SOCKET" split-window -t claude -v -l 20% -c "$WORK_DIR" "bash --login -i"
 
-# Select the Claude Code pane (top) so it's focused on attach
+# --- Select the Claude Code pane (top) so it's focused on attach ---
 tmux -S "$TMUX_SOCKET" select-pane -t claude.0
 
-# Attach (focus stays on Claude Code pane)
-exec tmux -S "$TMUX_SOCKET" attach -t claude
+# --- Release the exclusive lock ---
+exec 9>&-

@@ -154,6 +154,9 @@ describe("Tier 2: hot-word scan", () => {
     "echo GRAFANA_API_TOKEN",
     "echo GRAFANA_INSTANCE_ID",
     "echo OTEL_EXPORTER_OTLP_HEADERS",
+    // gh api subcommand
+    "gh api /repos/owner/repo/issues",
+    "gh api /repos/owner/repo/issues --method POST",
   ];
 
   for (const cmd of escalated) {

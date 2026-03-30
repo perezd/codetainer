@@ -1,4 +1,3 @@
-
 export type Verdict =
   | { verdict: "allow"; reason: string }
   | { verdict: "block"; reason: string }
@@ -93,7 +92,15 @@ export async function classifyWithHaiku(
       // Pipe prompt via stdin to avoid shell argument length/escaping issues.
       // CLAUDE_SESSION_NAMER=1 prevents the Stop hook's session-namer from firing.
       const proc = Bun.spawn(
-        ["claude", "-p", "--model", "claude-haiku-4-5-20251001", "--max-turns", "1", "-"],
+        [
+          "claude",
+          "-p",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--max-turns",
+          "1",
+          "-",
+        ],
         {
           stdin: new TextEncoder().encode(prompt),
           stdout: "pipe",
@@ -110,7 +117,9 @@ export async function classifyWithHaiku(
       ]);
 
       if (exitCode !== 0) {
-        throw new Error(`claude -p exited ${exitCode}: ${stderr.slice(0, 200)}`);
+        throw new Error(
+          `claude -p exited ${exitCode}: ${stderr.slice(0, 200)}`,
+        );
       }
 
       return parseVerdict(result);
