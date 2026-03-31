@@ -176,6 +176,12 @@ describe("parseGhRepoFlag", () => {
   test("returns null when --repo value has no slash", () => {
     expect(parseGhRepoFlag("gh pr list --repo justarepo")).toBeNull();
   });
+
+  test("does not match --repo as substring of another argument", () => {
+    expect(
+      parseGhRepoFlag("gh pr create -F body=--repo perezd/claudetainer"),
+    ).toBeNull();
+  });
 });
 
 describe("hasBlockedMethod", () => {
@@ -331,6 +337,18 @@ describe("extractGitHubRepo", () => {
 
   test("returns null for empty string", () => {
     expect(extractGitHubRepo("")).toBeNull();
+  });
+
+  test("extracts owner/repo from ssh:// URL with .git", () => {
+    expect(
+      extractGitHubRepo("ssh://git@github.com/perezd/claudetainer.git"),
+    ).toEqual({ owner: "perezd", repo: "claudetainer" });
+  });
+
+  test("extracts owner/repo from ssh:// URL without .git", () => {
+    expect(
+      extractGitHubRepo("ssh://git@github.com/perezd/claudetainer"),
+    ).toEqual({ owner: "perezd", repo: "claudetainer" });
   });
 });
 

@@ -175,7 +175,7 @@ export function parseGhRepoFlag(command: string): RepoTarget | null {
 
   // Match --repo owner/repo or --repo=owner/repo
   const repoFlagMatch = command.match(
-    /(?:--repo(?:=|\s+)|(?:^|\s)-R\s+)([^\s]+)/,
+    /(?:(?:^|\s)--repo(?:=|\s+)|(?:^|\s)-R\s+)([^\s]+)/,
   );
   if (!repoFlagMatch) return null;
 
@@ -230,11 +230,17 @@ export function extractGitHubRepo(url: string): RepoTarget | null {
   );
   if (httpsMatch) return { owner: httpsMatch[1], repo: httpsMatch[2] };
 
-  // SSH: git@github.com:<owner>/<repo>[.git]
+  // SSH (scp-like): git@github.com:<owner>/<repo>[.git]
   const sshMatch = url.match(
     /^git@github\.com:([^/]+)\/([^/\s]+?)(?:\.git)?\s*$/,
   );
   if (sshMatch) return { owner: sshMatch[1], repo: sshMatch[2] };
+
+  // SSH (URL): ssh://git@github.com/<owner>/<repo>[.git]
+  const sshUrlMatch = url.match(
+    /^ssh:\/\/git@github\.com\/([^/]+)\/([^/\s]+?)(?:\.git)?\s*$/,
+  );
+  if (sshUrlMatch) return { owner: sshUrlMatch[1], repo: sshUrlMatch[2] };
 
   return null;
 }
