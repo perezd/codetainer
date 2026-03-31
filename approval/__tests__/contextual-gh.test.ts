@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseGhApiTarget } from "../check-command";
+import { parseGhApiTarget, parseGhRepoFlag } from "../check-command";
 
 describe("parseGhApiTarget", () => {
   test("extracts owner/repo from gh api repos/owner/repo/issues", () => {
@@ -70,5 +70,51 @@ describe("parseGhApiTarget", () => {
       owner: "owner",
       repo: "repo",
     });
+  });
+});
+
+describe("parseGhRepoFlag", () => {
+  test("extracts owner/repo from --repo flag", () => {
+    expect(parseGhRepoFlag("gh pr create --repo perezd/claudetainer")).toEqual({
+      owner: "perezd",
+      repo: "claudetainer",
+    });
+  });
+
+  test("extracts owner/repo from -R flag", () => {
+    expect(
+      parseGhRepoFlag("gh issue comment 36 -R perezd/claudetainer --body hi"),
+    ).toEqual({ owner: "perezd", repo: "claudetainer" });
+  });
+
+  test("handles --repo=owner/repo form", () => {
+    expect(parseGhRepoFlag("gh pr list --repo=perezd/claudetainer")).toEqual({
+      owner: "perezd",
+      repo: "claudetainer",
+    });
+  });
+
+  test("returns null when no --repo or -R flag", () => {
+    expect(parseGhRepoFlag("gh pr list")).toBeNull();
+  });
+
+  test("returns null for non-gh commands", () => {
+    expect(parseGhRepoFlag("git status --repo foo/bar")).toBeNull();
+  });
+
+  test("returns null for gh api commands (use parseGhApiTarget instead)", () => {
+    expect(parseGhRepoFlag("gh api repos/owner/repo/issues")).toBeNull();
+  });
+
+  test("rejects owner with special characters", () => {
+    expect(parseGhRepoFlag("gh pr list --repo evil$(cmd)/repo")).toBeNull();
+  });
+
+  test("rejects repo with special characters", () => {
+    expect(parseGhRepoFlag("gh pr list --repo owner/repo$(cmd)")).toBeNull();
+  });
+
+  test("returns null when --repo value has no slash", () => {
+    expect(parseGhRepoFlag("gh pr list --repo justarepo")).toBeNull();
   });
 });

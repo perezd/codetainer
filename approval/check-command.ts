@@ -138,6 +138,39 @@ export function parseGhApiTarget(command: string): RepoTarget | null {
   return { owner, repo };
 }
 
+const GH_CMD_RE = /^gh\s+(?!api\b)/;
+
+/**
+ * Extract the target owner/repo from a `gh` command's --repo or -R flag.
+ * Only applies to non-api gh commands (gh pr, gh issue, etc.).
+ * Returns null if:
+ *   - the command is not a non-api gh command
+ *   - no --repo or -R flag is found
+ *   - the value doesn't contain owner/repo format
+ *   - owner or repo contain characters outside [a-zA-Z0-9._-]
+ */
+export function parseGhRepoFlag(command: string): RepoTarget | null {
+  if (!GH_CMD_RE.test(command)) return null;
+
+  // Match --repo owner/repo or --repo=owner/repo
+  const repoFlagMatch = command.match(
+    /(?:--repo(?:=|\s+)|(?:^|\s)-R\s+)([^\s]+)/,
+  );
+  if (!repoFlagMatch) return null;
+
+  const value = repoFlagMatch[1];
+  const slashIdx = value.indexOf("/");
+  if (slashIdx === -1) return null;
+
+  const owner = value.slice(0, slashIdx);
+  const repo = value.slice(slashIdx + 1);
+
+  if (!owner || !repo) return null;
+  if (!SAFE_NAME_RE.test(owner) || !SAFE_NAME_RE.test(repo)) return null;
+
+  return { owner, repo };
+}
+
 const HAS_DELETE_FLAG = /\s--delete\b|\s-[a-zA-Z]*d/;
 
 /**
