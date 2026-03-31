@@ -107,14 +107,35 @@ const GH_API_RE = /^gh\s+api\s+/;
  *   - the path contains traversal (..), encoding (%), or double slashes (//)
  *   - owner or repo contain characters outside [a-zA-Z0-9._-]
  */
+// Flags for `gh api` that consume the next token as a value.
+// Their values must be skipped when scanning for the API path positional arg.
+const GH_API_VALUE_FLAGS =
+  /^(-X|--method|-H|--header|-F|-f|--field|--raw-field|--input|--template|--jq|-q|-p|--preview|--hostname|--cache)$/;
+
 export function parseGhApiTarget(command: string): RepoTarget | null {
   if (!GH_API_RE.test(command)) return null;
 
-  // Extract the API path (first positional arg matching repos/ after "gh api")
+  // Extract tokens after "gh api" and find the API path positional arg.
+  // Skip flags and their consumed values to avoid false matches on
+  // flag values like `--input repos/OWNER/REPO/file`.
   const afterGhApi = command.replace(GH_API_RE, "").trim();
   const tokens = afterGhApi.split(/\s+/);
-  // Find first token that looks like an API path (skip flags and their values)
-  const pathToken = tokens.find((t) => /^\/?repos\//.test(t));
+
+  let pathToken: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (GH_API_VALUE_FLAGS.test(t)) {
+      i++; // skip the next token (flag's value)
+      continue;
+    }
+    // Skip --flag=value forms and boolean flags
+    if (t.startsWith("-")) continue;
+    // First positional arg — check if it's a repos/ path
+    if (/^\/?repos\//.test(t)) {
+      pathToken = t;
+    }
+    break; // first positional arg found (whether it matches or not)
+  }
   if (!pathToken) return null;
 
   // Validate: no traversal, encoding, or double slashes

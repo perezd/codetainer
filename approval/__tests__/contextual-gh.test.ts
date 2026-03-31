@@ -50,9 +50,37 @@ describe("parseGhApiTarget", () => {
   test("handles multiple flags before the path", () => {
     expect(
       parseGhApiTarget(
-        'gh api -H "Accept: application/json" -X PATCH repos/o/r/issues/1',
+        "gh api -H application/json -X PATCH repos/o/r/issues/1",
       ),
     ).toEqual({ owner: "o", repo: "r" });
+  });
+
+  test("quoted multi-word flag values cause fail-closed (no exemption)", () => {
+    // Naive whitespace tokenizer can't parse quoted args — returns null,
+    // which means the command falls through to Haiku (fail-closed).
+    expect(
+      parseGhApiTarget(
+        'gh api -H "Accept: application/json" -X PATCH repos/o/r/issues/1',
+      ),
+    ).toBeNull();
+  });
+
+  test("ignores repos/ in --input flag value (graphql endpoint)", () => {
+    expect(
+      parseGhApiTarget("gh api graphql --input repos/owner/repo/query.graphql"),
+    ).toBeNull();
+  });
+
+  test("ignores repos/ in -F flag value", () => {
+    expect(
+      parseGhApiTarget('gh api graphql -F query="repos/owner/repo" -F owner=x'),
+    ).toBeNull();
+  });
+
+  test("ignores repos/ in --jq flag value", () => {
+    expect(
+      parseGhApiTarget("gh api /user --jq repos/owner/repo/something"),
+    ).toBeNull();
   });
 
   test("returns null for gh api /user (no repo path)", () => {
