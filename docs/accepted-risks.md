@@ -17,7 +17,7 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Why it can't be resolved:** Fly.io SSH requires public IPv6 routing, and Fly's kernel has broken IPv6 conntrack, making IPv6 filtering unreliable.
 - **Compensating controls:** All security-relevant egress rules are enforced on IPv4. The domain allowlist and CoreDNS filtering operate at the DNS layer, which is protocol-agnostic.
 - **Severity:** Medium
-- **Date identified:** 2025 (pre-existing, documented in README)
+- **Date identified:** 2026-03 (pre-existing, documented in README)
 
 ### Settings file writable by claude user
 
@@ -26,7 +26,7 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Why it can't be resolved:** Claude Code requires write access to its own settings file for normal operation.
 - **Compensating controls:** Layer 2 (network isolation via iptables) and Layer 3 (approval binary at `/opt/approval/`, owned by root) are the real enforcement boundaries. Even if the hook is removed, network isolation prevents data exfiltration and the approval binary cannot be modified.
 - **Severity:** Medium
-- **Date identified:** 2025 (pre-existing, documented in README)
+- **Date identified:** 2026-03 (pre-existing, documented in README)
 
 ### Unattended autonomous execution with repo credentials
 
