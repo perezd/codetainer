@@ -209,6 +209,8 @@ These superpowers skills are mandatory process gates — not optional.
 
 ### Skill Overrides
 
+**`/executing-plans`:** Always use `superpowers:subagent-driven-development` instead of the base executing-plans skill. Skip the selection prompt — subagent-driven development is the default execution strategy. Only deviate if the user has explicitly instructed otherwise in advance.
+
 **`/finishing-a-development-branch`:** Always default to "Push and create a Pull Request" (Option 2) without presenting the interactive prompt. This aligns with the project's PR-based integration model — all changes go through pull requests. Only deviate from this default if the user has explicitly instructed otherwise in advance.
 
 ---
