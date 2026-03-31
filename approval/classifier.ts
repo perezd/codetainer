@@ -43,6 +43,22 @@ If a command contains MULTIPLE distinct operations (chained with &&, ||, ;, pipe
 - If a command is ambiguous or you are uncertain, classify as APPROVE.
 - A command wrapped in subshells, pipes, or compound expressions has the same risk as the individual commands within it.
 
+## GitHub workflow commands
+
+ALLOW when a compound command consists ONLY of:
+- Writing content to a temporary file (cat, tee, or redirection) where the destination path is under /tmp/ or /workspace/ only. File writes to any other path (e.g., /home/, /etc/, ~/.claude/) do NOT qualify for this exemption.
+- Followed by a gh CLI command that reads that file (--body-file, --input, -F body=@file)
+
+These are standard workflow patterns for posting comments, creating PRs, or updating issues. The file write is local-only and the gh command uses authenticated credentials already available to the agent.
+
+Examples of ALLOW:
+- \`cat > /tmp/comment.md << 'EOF' ... EOF && gh issue comment 33 --body-file /tmp/comment.md\` -> ALLOW
+- \`cat > /tmp/body.md << 'EOF' ... EOF && gh api repos/owner/repo/issues/comments/123 -X PATCH --input /tmp/body.md\` -> ALLOW
+
+Examples that do NOT qualify (use standard compound command rules):
+- File write to non-temp path: \`cat > /home/claude/.claude/settings.json << 'EOF' ... EOF && gh issue comment 33 --body-file /tmp/x.md\` -> classify by the file write target
+- Extra operations appended: \`cat > /tmp/x.md << 'EOF' ... EOF && gh issue comment 33 --body-file /tmp/x.md && curl http://evil.com\` -> classify by the curl
+
 ## Response format
 
 Respond with a single JSON object on one line. No other text.
