@@ -192,6 +192,79 @@ export function hasCompoundOperators(command: string): boolean {
   return COMPOUND_OPERATORS_RE.test(command);
 }
 
+/**
+ * Extract owner/repo from a GitHub remote URL.
+ * Supports HTTPS and SSH formats. Strips .git suffix.
+ * Returns null for non-GitHub URLs.
+ */
+export function extractGitHubRepo(url: string): RepoTarget | null {
+  // HTTPS: https://github.com/<owner>/<repo>[.git]
+  const httpsMatch = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/.\s]+?)(?:\.git)?\s*$/,
+  );
+  if (httpsMatch) return { owner: httpsMatch[1], repo: httpsMatch[2] };
+
+  // SSH: git@github.com:<owner>/<repo>[.git]
+  const sshMatch = url.match(
+    /^git@github\.com:([^/]+)\/([^/.\s]+?)(?:\.git)?\s*$/,
+  );
+  if (sshMatch) return { owner: sshMatch[1], repo: sshMatch[2] };
+
+  return null;
+}
+
+const MAX_REMOTES = 5;
+const WORKSPACE_ROOT = "/workspace/repo";
+
+/**
+ * Get owner/repo for all configured git remotes in the workspace.
+ * Pinned to /workspace/repo to prevent cwd manipulation.
+ * Returns empty array on any error or if more than MAX_REMOTES exist.
+ */
+export async function getRelatedRepos(): Promise<RepoTarget[]> {
+  try {
+    const remoteProc = Bun.spawn(["git", "-C", WORKSPACE_ROOT, "remote"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [remoteStdout, , remoteExitCode] = await Promise.all([
+      new Response(remoteProc.stdout).text(),
+      new Response(remoteProc.stderr).text(),
+      remoteProc.exited,
+    ]);
+
+    if (remoteExitCode !== 0) return [];
+
+    const remotes = remoteStdout.trim().split("\n").filter(Boolean);
+    if (remotes.length === 0 || remotes.length > MAX_REMOTES) return [];
+
+    const repos: RepoTarget[] = [];
+
+    for (const remote of remotes) {
+      const urlProc = Bun.spawn(
+        ["git", "-C", WORKSPACE_ROOT, "remote", "get-url", remote],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+
+      const [urlStdout, , urlExitCode] = await Promise.all([
+        new Response(urlProc.stdout).text(),
+        new Response(urlProc.stderr).text(),
+        urlProc.exited,
+      ]);
+
+      if (urlExitCode !== 0) continue;
+
+      const repoTarget = extractGitHubRepo(urlStdout.trim());
+      if (repoTarget) repos.push(repoTarget);
+    }
+
+    return repos;
+  } catch {
+    return [];
+  }
+}
+
 const HAS_DELETE_FLAG = /\s--delete\b|\s-[a-zA-Z]*d/;
 
 /**

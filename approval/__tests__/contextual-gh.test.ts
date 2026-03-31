@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import {
   parseGhApiTarget,
   parseGhRepoFlag,
   hasBlockedMethod,
   hasCompoundOperators,
+  extractGitHubRepo,
+  getRelatedRepos,
 } from "../check-command";
 
 describe("parseGhApiTarget", () => {
@@ -213,5 +215,147 @@ describe("hasCompoundOperators", () => {
         "gh api repos/o/r/issues --method POST -f title=test -f body=hello",
       ),
     ).toBe(false);
+  });
+});
+
+describe("extractGitHubRepo", () => {
+  test("extracts owner/repo from HTTPS URL", () => {
+    expect(
+      extractGitHubRepo("https://github.com/perezd/claudetainer.git"),
+    ).toEqual({ owner: "perezd", repo: "claudetainer" });
+  });
+
+  test("extracts owner/repo from HTTPS URL without .git", () => {
+    expect(extractGitHubRepo("https://github.com/perezd/claudetainer")).toEqual(
+      { owner: "perezd", repo: "claudetainer" },
+    );
+  });
+
+  test("extracts owner/repo from SSH URL", () => {
+    expect(extractGitHubRepo("git@github.com:perezd/claudetainer.git")).toEqual(
+      { owner: "perezd", repo: "claudetainer" },
+    );
+  });
+
+  test("extracts owner/repo from SSH URL without .git", () => {
+    expect(extractGitHubRepo("git@github.com:perezd/claudetainer")).toEqual({
+      owner: "perezd",
+      repo: "claudetainer",
+    });
+  });
+
+  test("returns null for non-GitHub URL", () => {
+    expect(extractGitHubRepo("https://gitlab.com/owner/repo.git")).toBeNull();
+  });
+
+  test("returns null for empty string", () => {
+    expect(extractGitHubRepo("")).toBeNull();
+  });
+});
+
+describe("getRelatedRepos", () => {
+  let originalSpawn: typeof Bun.spawn;
+  let spawnCalls: string[][] = [];
+
+  beforeEach(() => {
+    originalSpawn = Bun.spawn;
+    spawnCalls = [];
+  });
+
+  afterEach(() => {
+    Bun.spawn = originalSpawn;
+  });
+
+  function mockSpawn(
+    responses: Map<string, { stdout: string; exitCode: number }>,
+  ) {
+    let callIndex = 0;
+    // @ts-expect-error — partial mock of Bun.spawn for testing
+    Bun.spawn = (args: string[]) => {
+      spawnCalls.push(args);
+      const key = args.join(" ");
+      const response = responses.get(key) ?? { stdout: "", exitCode: 1 };
+      return {
+        stdout: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(response.stdout));
+            controller.close();
+          },
+        }),
+        stderr: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        exited: Promise.resolve(response.exitCode),
+      };
+    };
+  }
+
+  test("returns repos from origin and upstream remotes", async () => {
+    mockSpawn(
+      new Map([
+        [
+          "git -C /workspace/repo remote",
+          { stdout: "origin\nupstream\n", exitCode: 0 },
+        ],
+        [
+          "git -C /workspace/repo remote get-url origin",
+          {
+            stdout: "https://github.com/limbibot/claudetainer.git\n",
+            exitCode: 0,
+          },
+        ],
+        [
+          "git -C /workspace/repo remote get-url upstream",
+          {
+            stdout: "https://github.com/perezd/claudetainer.git\n",
+            exitCode: 0,
+          },
+        ],
+      ]),
+    );
+
+    const repos = await getRelatedRepos();
+    expect(repos).toEqual([
+      { owner: "limbibot", repo: "claudetainer" },
+      { owner: "perezd", repo: "claudetainer" },
+    ]);
+  });
+
+  test("returns empty array when git remote fails", async () => {
+    mockSpawn(
+      new Map([
+        ["git -C /workspace/repo remote", { stdout: "", exitCode: 128 }],
+      ]),
+    );
+    expect(await getRelatedRepos()).toEqual([]);
+  });
+
+  test("skips remotes with non-GitHub URLs", async () => {
+    mockSpawn(
+      new Map([
+        ["git -C /workspace/repo remote", { stdout: "origin\n", exitCode: 0 }],
+        [
+          "git -C /workspace/repo remote get-url origin",
+          {
+            stdout: "https://gitlab.com/owner/repo.git\n",
+            exitCode: 0,
+          },
+        ],
+      ]),
+    );
+    expect(await getRelatedRepos()).toEqual([]);
+  });
+
+  test("caps at 5 remotes", async () => {
+    const remotes = "r1\nr2\nr3\nr4\nr5\nr6\n";
+    mockSpawn(
+      new Map([
+        ["git -C /workspace/repo remote", { stdout: remotes, exitCode: 0 }],
+      ]),
+    );
+    const repos = await getRelatedRepos();
+    expect(repos).toEqual([]);
   });
 });
