@@ -263,7 +263,7 @@ export async function isContextualGhCommand(command: string): Promise<boolean> {
   // Reject compound commands — they must go through Haiku
   if (hasCompoundOperators(command)) return false;
 
-  // Reject blocked HTTP methods (DELETE, PUT)
+  // Reject disallowed HTTP methods (anything outside GET/POST/PATCH allowlist)
   if (hasBlockedMethod(command)) return false;
 
   // Parse target repo from the command
@@ -391,8 +391,13 @@ if (isMainModule) {
           console.error(
             `[HOOK] Hot word "${tierResult.hotWord}" -> escalating to Haiku`,
           );
-          // Pre-Haiku: check if this is a contextual gh command
-          if (await isContextualGhCommand(command)) {
+          // Pre-Haiku: check if this is a contextual gh command.
+          // Only apply when the hot word is gh-related — credential hot words
+          // (GH_PAT, CLAUDE_CODE_OAUTH_TOKEN, etc.) must always reach Haiku.
+          if (
+            tierResult.hotWord.startsWith("gh ") &&
+            (await isContextualGhCommand(command))
+          ) {
             console.error(`[HOOK] ALLOW (contextual gh command): ${command}`);
             outputDecision("allow");
             process.exit(0);

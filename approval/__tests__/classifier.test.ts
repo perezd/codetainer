@@ -72,8 +72,8 @@ describe("SYSTEM_PROMPT", () => {
 
   test("includes GitHub workflow command exemption", () => {
     expect(SYSTEM_PROMPT).toContain("GitHub workflow commands");
-    expect(SYSTEM_PROMPT).toContain("/tmp/ only");
-    expect(SYSTEM_PROMPT).toContain("does not include .git/");
+    expect(SYSTEM_PROMPT).toContain("EITHER under /tmp/ OR under /workspace/");
+    expect(SYSTEM_PROMPT).toContain("does NOT include .git/");
     expect(SYSTEM_PROMPT).toContain("--body-file");
   });
 });

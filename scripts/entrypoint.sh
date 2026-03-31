@@ -230,12 +230,15 @@ if [[ -d /workspace/repo/.git ]]; then
     # won't activate, falling through to Haiku classification).
     set +e
     mkdir -p /tmp/approval
+    tmp_snapshot="/tmp/approval/git-remote-urls.txt.$$"
     git -C /workspace/repo remote | while read -r name; do
       git -C /workspace/repo remote get-url "$name" 2>/dev/null
-    done > /tmp/approval/git-remote-urls.txt
+    done > "$tmp_snapshot"
     if [[ $? -ne 0 ]]; then
+      rm -f "$tmp_snapshot" /tmp/approval/git-remote-urls.txt
       echo "[ENTRYPOINT] WARNING: Failed to snapshot git remotes; continuing without snapshot" >&2
     else
+      mv -f "$tmp_snapshot" /tmp/approval/git-remote-urls.txt
       chmod 444 /tmp/approval/git-remote-urls.txt
       chmod 555 /tmp/approval
       echo "[ENTRYPOINT] Git remote snapshot created at /tmp/approval/git-remote-urls.txt"

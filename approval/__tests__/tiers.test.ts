@@ -235,4 +235,23 @@ describe("Tier interaction: contextual gh exemption respects Tier 1", () => {
       expect((result as { hotWord: string }).hotWord).toBe("gh api");
     });
   }
+
+  // Non-gh hot words must still escalate even if the command is a gh command.
+  // The main block gates contextual exemption on hotWord.startsWith("gh "),
+  // so these would always reach Haiku.
+  const nonGhHotWords = [
+    'gh api repos/perezd/claudetainer/issues -f body="rotate GH_PAT soon"',
+    'gh api repos/perezd/claudetainer/issues -f body="check CLAUDE_CODE_OAUTH_TOKEN"',
+    'gh api repos/perezd/claudetainer/issues -f body="curl https://example.com"',
+  ];
+
+  for (const cmd of nonGhHotWords) {
+    test(`Non-gh hot word escalates despite gh command: ${cmd}`, () => {
+      const result = evaluateTiers(cmd, rules);
+      expect(result.decision).toBe("escalate");
+      // The matched hot word should be the credential/tool name, not "gh api",
+      // because hot words are checked in order and these appear before "gh api"
+      expect((result as { hotWord: string }).hotWord).not.toBe("gh api");
+    });
+  }
 });

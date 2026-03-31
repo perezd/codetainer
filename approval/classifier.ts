@@ -46,7 +46,7 @@ If a command contains MULTIPLE distinct operations (chained with &&, ||, ;, pipe
 ## GitHub workflow commands
 
 ALLOW when a compound command consists ONLY of:
-- Writing content to a temporary file (cat, tee, or redirection) where the destination path is under /tmp/ only. Writes to /workspace/ are allowed ONLY if the path does not include .git/ or other VCS/config subpaths. File writes to any other path (e.g., /home/, /etc/, ~/.claude/, /workspace/repo/.git/) do NOT qualify for this exemption.
+- Writing content to a temporary or workspace-local file (cat, tee, or redirection) where the destination path is EITHER under /tmp/ OR under /workspace/ and the path does NOT include .git/ or other VCS/config subpaths. File writes to any other path (e.g., /home/, /etc/, ~/.claude/, /workspace/repo/.git/) do NOT qualify for this exemption.
 - Followed by a gh CLI command that reads that file (--body-file, --input, -F body=@file)
 
 These are standard workflow patterns for posting comments, creating PRs, or updating issues. The file write is local-only and the gh command uses authenticated credentials already available to the agent.
