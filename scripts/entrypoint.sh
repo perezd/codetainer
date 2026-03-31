@@ -213,10 +213,43 @@ echo "[ENTRYPOINT] Root filesystem locked (read-only)"
 # === 6. Clone repo (optional) ===
 if [[ -n "${REPO_URL:-}" ]]; then
   echo "[ENTRYPOINT] Cloning $REPO_URL..."
-  # Clone as root (has access to git credentials), then give full ownership to claude
-  git clone "$REPO_URL" /workspace/repo && \
-    chown -R claude:claude /workspace/repo || \
+  git clone "$REPO_URL" /workspace/repo || \
     echo "[ENTRYPOINT] WARNING: Failed to clone $REPO_URL" >&2
+fi
+
+# Snapshot git remote URLs for the approval pipeline's contextual exemption.
+# Runs as root while the repo is still root-owned (before chown to claude),
+# avoiding git's safe.directory check. The snapshot is stored in a root-owned
+# directory that claude cannot modify, eliminating runtime remote injection
+# via .git/config edits, ~/.gitconfig, GIT_CONFIG_* env vars, or include
+# directives. URLs are sanitized to strip any embedded credentials (userinfo)
+# before writing, since the snapshot file is world-readable (mode 444).
+if [[ -d /workspace/repo/.git ]]; then
+  (
+    # Fail-open: snapshot errors must not abort the entrypoint. The approval
+    # layer handles a missing snapshot gracefully (contextual exemption simply
+    # won't activate, falling through to Haiku classification).
+    set +e
+    mkdir -p /tmp/approval
+    tmp_snapshot="/tmp/approval/git-remote-urls.txt.$$"
+    git -C /workspace/repo remote | while read -r name; do
+      git -C /workspace/repo remote get-url "$name" 2>/dev/null
+    done | sed -E 's#(https?://)[^/@]*@#\1#g' > "$tmp_snapshot"
+    if [[ $? -ne 0 ]]; then
+      rm -f "$tmp_snapshot" /tmp/approval/git-remote-urls.txt
+      echo "[ENTRYPOINT] WARNING: Failed to snapshot git remotes; continuing without snapshot" >&2
+    else
+      mv -f "$tmp_snapshot" /tmp/approval/git-remote-urls.txt
+      chmod 444 /tmp/approval/git-remote-urls.txt
+      chmod 555 /tmp/approval
+      echo "[ENTRYPOINT] Git remote snapshot created at /tmp/approval/git-remote-urls.txt"
+    fi
+  ) || true
+fi
+
+# Give repo ownership to claude
+if [[ -d /workspace/repo ]]; then
+  chown -R claude:claude /workspace/repo
 fi
 
 # Pre-accept project trust for the workspace directory

@@ -69,4 +69,11 @@ describe("SYSTEM_PROMPT", () => {
     expect(SYSTEM_PROMPT).toContain("BLOCK when the command");
     expect(SYSTEM_PROMPT).toContain("APPROVE when the command");
   });
+
+  test("includes GitHub workflow command exemption", () => {
+    expect(SYSTEM_PROMPT).toContain("GitHub workflow commands");
+    expect(SYSTEM_PROMPT).toContain("EITHER under /tmp/ OR under /workspace/");
+    expect(SYSTEM_PROMPT).toContain("does NOT include .git/");
+    expect(SYSTEM_PROMPT).toContain("--body-file");
+  });
 });
