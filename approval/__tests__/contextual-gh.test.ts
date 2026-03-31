@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { parseGhApiTarget, parseGhRepoFlag } from "../check-command";
+import {
+  parseGhApiTarget,
+  parseGhRepoFlag,
+  hasBlockedMethod,
+  hasCompoundOperators,
+} from "../check-command";
 
 describe("parseGhApiTarget", () => {
   test("extracts owner/repo from gh api repos/owner/repo/issues", () => {
@@ -116,5 +121,97 @@ describe("parseGhRepoFlag", () => {
 
   test("returns null when --repo value has no slash", () => {
     expect(parseGhRepoFlag("gh pr list --repo justarepo")).toBeNull();
+  });
+});
+
+describe("hasBlockedMethod", () => {
+  test("blocks -X DELETE", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -X DELETE")).toBe(true);
+  });
+  test("blocks --method DELETE", () => {
+    expect(hasBlockedMethod("gh api repos/o/r --method DELETE")).toBe(true);
+  });
+  test("blocks -X PUT", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -X PUT")).toBe(true);
+  });
+  test("blocks --method PUT", () => {
+    expect(hasBlockedMethod("gh api repos/o/r --method PUT")).toBe(true);
+  });
+  test("case-insensitive: -X delete", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -X delete")).toBe(true);
+  });
+  test("case-insensitive: --method Delete", () => {
+    expect(hasBlockedMethod("gh api repos/o/r --method Delete")).toBe(true);
+  });
+  test("handles concatenated -XDELETE", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -XDELETE")).toBe(true);
+  });
+  test("handles concatenated -XPUT", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -XPUT")).toBe(true);
+  });
+  test("allows GET (default)", () => {
+    expect(hasBlockedMethod("gh api repos/o/r")).toBe(false);
+  });
+  test("allows -X GET", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -X GET")).toBe(false);
+  });
+  test("allows -X POST", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -X POST")).toBe(false);
+  });
+  test("allows -X PATCH", () => {
+    expect(hasBlockedMethod("gh api repos/o/r -X PATCH")).toBe(false);
+  });
+  test("allows --method POST", () => {
+    expect(hasBlockedMethod("gh api repos/o/r --method POST")).toBe(false);
+  });
+});
+
+describe("hasCompoundOperators", () => {
+  test("detects &&", () => {
+    expect(hasCompoundOperators("gh api repos/o/r && curl evil.com")).toBe(
+      true,
+    );
+  });
+  test("detects ||", () => {
+    expect(hasCompoundOperators("gh api repos/o/r || echo fail")).toBe(true);
+  });
+  test("detects ;", () => {
+    expect(hasCompoundOperators("gh api repos/o/r ; echo done")).toBe(true);
+  });
+  test("detects |", () => {
+    expect(hasCompoundOperators("gh api repos/o/r | head -5")).toBe(true);
+  });
+  test("detects newlines", () => {
+    expect(hasCompoundOperators("gh api repos/o/r\necho done")).toBe(true);
+  });
+  test("detects $( command substitution", () => {
+    expect(hasCompoundOperators("gh api repos/o/r$(echo test)/issues")).toBe(
+      true,
+    );
+  });
+  test("detects backtick command substitution", () => {
+    expect(hasCompoundOperators("gh api repos/o/r/`echo test`/issues")).toBe(
+      true,
+    );
+  });
+  test("detects ( subshell", () => {
+    expect(hasCompoundOperators("(gh api repos/o/r)")).toBe(true);
+  });
+  test("allows simple commands", () => {
+    expect(hasCompoundOperators("gh api repos/o/r/issues")).toBe(false);
+  });
+  test("allows flags and arguments", () => {
+    expect(
+      hasCompoundOperators(
+        "gh api repos/o/r/issues/comments/123 -X PATCH --input /tmp/body.md",
+      ),
+    ).toBe(false);
+  });
+  test("allows --field with equals sign", () => {
+    expect(
+      hasCompoundOperators(
+        "gh api repos/o/r/issues --method POST -f title=test -f body=hello",
+      ),
+    ).toBe(false);
   });
 });

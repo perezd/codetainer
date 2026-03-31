@@ -171,6 +171,27 @@ export function parseGhRepoFlag(command: string): RepoTarget | null {
   return { owner, repo };
 }
 
+const BLOCKED_METHOD_RE = /(?:-X\s*|--method\s+)(DELETE|PUT)\b/i;
+
+/**
+ * Check if a gh command uses a blocked HTTP method (DELETE or PUT).
+ * Case-insensitive. Handles both -X DELETE and -XDELETE forms.
+ */
+export function hasBlockedMethod(command: string): boolean {
+  return BLOCKED_METHOD_RE.test(command);
+}
+
+const COMPOUND_OPERATORS_RE = /[;&|`\n$()]/;
+
+/**
+ * Check if a command contains compound operators or shell metacharacters.
+ * Commands with these are never contextually exempted — they fall through
+ * to normal tier evaluation (Haiku).
+ */
+export function hasCompoundOperators(command: string): boolean {
+  return COMPOUND_OPERATORS_RE.test(command);
+}
+
 const HAS_DELETE_FLAG = /\s--delete\b|\s-[a-zA-Z]*d/;
 
 /**
