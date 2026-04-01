@@ -85,6 +85,9 @@ describe("Tier 1: hard-block", () => {
     "echo ${FLY_API_TOKEN}",
     "echo $GRAFANA_API_TOKEN",
     "echo ${GRAFANA_INSTANCE_ID}",
+    // gh repo sync --force (destructive sync)
+    "gh repo sync limbibot/claudetainer --source perezd/claudetainer --force",
+    "gh repo sync limbibot/claudetainer --force --source perezd/claudetainer",
   ];
 
   for (const cmd of blocked) {
@@ -157,6 +160,19 @@ describe("Tier 2: hot-word scan", () => {
     // gh api subcommand
     "gh api /repos/owner/repo/issues",
     "gh api /repos/owner/repo/issues --method POST",
+    // GitHub CLI mutating subcommands
+    "gh issue comment 49 --repo perezd/claudetainer --body hi",
+    "gh issue create --repo perezd/claudetainer --title test",
+    "gh issue edit 49 --repo perezd/claudetainer --body updated",
+    "gh issue close 49 --repo perezd/claudetainer",
+    "gh issue reopen 49 --repo perezd/claudetainer",
+    "gh pr create --repo perezd/claudetainer --title test",
+    "gh pr comment 10 --repo perezd/claudetainer --body hi",
+    "gh pr edit 10 --repo perezd/claudetainer --title updated",
+    "gh pr merge 10 --repo perezd/claudetainer",
+    "gh pr close 10 --repo perezd/claudetainer",
+    "gh pr review 10 --repo perezd/claudetainer --comment",
+    "gh repo sync limbibot/claudetainer --source perezd/claudetainer --branch main",
     // Whitespace bypass regression tests (issue #33)
     "gh  api /repos/owner/repo/issues", // double space
     "bun\tadd react", // tab between tokens
