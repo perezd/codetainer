@@ -225,7 +225,7 @@ if [[ -d /workspace/repo/.git ]]; then
     set +e
     # Extract origin NWO from remote URL
     origin_url=$(git -C /workspace/repo remote get-url origin 2>/dev/null)
-    repo_nwo=$(echo "$origin_url" | sed -E 's#.*/([^/]+/[^/.]+?)(\.git)?$#\1#')
+    repo_nwo=$(echo "$origin_url" | sed -E 's#(\.git)?$##; s#.*/([^/]+/[^/]+)$#\1#')
     if [[ -n "$repo_nwo" ]]; then
       # Query GitHub API for fork parent (timeout prevents boot hang)
       parent_nwo=$(timeout 10 gh repo view "$repo_nwo" --json isFork,parent \

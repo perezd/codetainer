@@ -8,7 +8,7 @@ set +e
 
 SNAPSHOT="/tmp/approval/git-remote-urls.txt"
 REPO_DIR="/workspace/repo"
-GITHUB_RE='^https://github\.com/([^/]+/[^/]+?)(\.git)?$'
+GITHUB_RE='^https://github\.com/([^/]+/[^/]+)(\.git)?$'
 
 # --- Read snapshot ---
 if [[ ! -f "$SNAPSHOT" ]]; then
@@ -49,22 +49,30 @@ fi
 
 # --- Sync fork on GitHub ---
 echo "[SYNC-FORK] Syncing ${origin_nwo} with upstream ${upstream_nwo}..." >&2
-if ! gh repo sync "$origin_nwo" --source "$upstream_nwo" --branch main 2>&1 >&2; then
+if ! gh repo sync "$origin_nwo" --source "$upstream_nwo" --branch main >&2; then
   echo "[SYNC-FORK] WARNING: gh repo sync failed, proceeding with current state" >&2
   exit 0
 fi
 
 # --- Pull locally ---
-git -C "$REPO_DIR" fetch origin main 2>&1 >&2 || {
-  echo "[SYNC-FORK] WARNING: git fetch origin main failed" >&2
-  exit 0
-}
-
-# Only update local main if we're on it (don't disrupt worktree checkouts)
+# Fetch and update local main ref in one step.
+# When main is checked out, use merge --ff-only (safe for working tree).
+# When on another branch (e.g., in a worktree), update the ref directly
+# so push doesn't send stale state.
 current_branch=$(git -C "$REPO_DIR" symbolic-ref --short HEAD 2>/dev/null)
 if [[ "$current_branch" == "main" ]]; then
-  git -C "$REPO_DIR" merge --ff-only origin/main 2>&1 >&2 || {
+  git -C "$REPO_DIR" fetch origin main >&2 || {
+    echo "[SYNC-FORK] WARNING: git fetch origin main failed" >&2
+    exit 0
+  }
+  git -C "$REPO_DIR" merge --ff-only origin/main >&2 || {
     echo "[SYNC-FORK] WARNING: git merge --ff-only origin/main failed (local divergence?)" >&2
+    exit 0
+  }
+else
+  # fetch origin main:main updates the local main ref directly (fast-forward only)
+  git -C "$REPO_DIR" fetch origin main:main >&2 || {
+    echo "[SYNC-FORK] WARNING: git fetch origin main:main failed" >&2
     exit 0
   }
 fi
@@ -76,7 +84,7 @@ if [[ "$ahead_count" -gt 0 ]]; then
   exit 0
 fi
 
-git -C "$REPO_DIR" push origin main 2>&1 >&2 || {
+git -C "$REPO_DIR" push origin main >&2 || {
   echo "[SYNC-FORK] WARNING: git push origin main failed" >&2
   exit 0
 }
