@@ -738,4 +738,14 @@ describe("isContextualGhCommand", () => {
       await isContextualGhCommand("gh repo sync limbibot/claudetainer"),
     ).toBe(false);
   });
+
+  test("hasBlockedMethod only applies to gh api, not other subcommands", async () => {
+    mockSnapshotUrls(standardUrls);
+    // -X DELETE in a gh issue comment body should not trigger method blocking
+    expect(
+      await isContextualGhCommand(
+        'gh issue comment --repo perezd/claudetainer --body "use -X DELETE"',
+      ),
+    ).toBe(true);
+  });
 });

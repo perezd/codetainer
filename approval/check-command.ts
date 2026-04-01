@@ -395,8 +395,9 @@ export async function isContextualGhCommand(command: string): Promise<boolean> {
   // Reject compound commands — they must go through Haiku
   if (hasCompoundOperators(cmd)) return false;
 
-  // Reject disallowed HTTP methods (anything outside GET/POST/PATCH allowlist)
-  if (hasBlockedMethod(cmd)) return false;
+  // Reject disallowed HTTP methods (anything outside GET/POST/PATCH allowlist).
+  // Only applies to gh api — other subcommands don't use -X/--method flags.
+  if (/^gh\s+api\b/.test(cmd) && hasBlockedMethod(cmd)) return false;
 
   // Parse target repo from the command (including gh repo sync)
   const syncResult = parseGhRepoSyncTarget(cmd);
