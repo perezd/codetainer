@@ -12,6 +12,28 @@
             "timeout": 30000
           }
         ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/claude/sync-fork.sh",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/claude/sync-fork.sh",
+            "timeout": 30000
+          }
+        ]
       }
     ],
     "Stop": [

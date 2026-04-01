@@ -120,7 +120,8 @@ RUN chmod +x /opt/network/refresh-iptables.sh
 COPY claude-settings.json /opt/claude/settings.json
 COPY scripts/statusline-command.sh /opt/claude/statusline-command.sh
 COPY scripts/session-namer.sh /opt/claude/session-namer.sh
-RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh
+COPY scripts/sync-fork.sh /opt/claude/sync-fork.sh
+RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh /opt/claude/sync-fork.sh
 
 # Status tool
 COPY scripts/status.sh /usr/local/bin/status
