@@ -2,12 +2,14 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import {
   parseGhApiTarget,
   parseGhRepoFlag,
+  parseGhRepoSyncTarget,
   hasBlockedMethod,
   hasCompoundOperators,
   extractGitHubRepo,
   getRelatedRepos,
   isContextualGhCommand,
   REMOTE_URLS_PATH,
+  ALWAYS_ESCALATE_HOT_WORDS,
 } from "../check-command";
 
 describe("parseGhApiTarget", () => {
@@ -181,6 +183,115 @@ describe("parseGhRepoFlag", () => {
     expect(
       parseGhRepoFlag("gh pr create -F body=--repo perezd/claudetainer"),
     ).toBeNull();
+  });
+});
+
+describe("parseGhRepoSyncTarget", () => {
+  test("extracts target from gh repo sync owner/repo", () => {
+    expect(parseGhRepoSyncTarget("gh repo sync perezd/claudetainer")).toEqual({
+      target: { owner: "perezd", repo: "claudetainer" },
+      source: null,
+    });
+  });
+
+  test("extracts target and source", () => {
+    expect(
+      parseGhRepoSyncTarget(
+        "gh repo sync limbibot/claudetainer --source perezd/claudetainer",
+      ),
+    ).toEqual({
+      target: { owner: "limbibot", repo: "claudetainer" },
+      source: { owner: "perezd", repo: "claudetainer" },
+    });
+  });
+
+  test("handles --source before positional arg", () => {
+    expect(
+      parseGhRepoSyncTarget(
+        "gh repo sync --source perezd/claudetainer limbibot/claudetainer",
+      ),
+    ).toEqual({
+      target: { owner: "limbibot", repo: "claudetainer" },
+      source: { owner: "perezd", repo: "claudetainer" },
+    });
+  });
+
+  test("handles --branch flag with value", () => {
+    expect(
+      parseGhRepoSyncTarget(
+        "gh repo sync limbibot/claudetainer --source perezd/claudetainer --branch main",
+      ),
+    ).toEqual({
+      target: { owner: "limbibot", repo: "claudetainer" },
+      source: { owner: "perezd", repo: "claudetainer" },
+    });
+  });
+
+  test("returns null target when no positional arg", () => {
+    expect(parseGhRepoSyncTarget("gh repo sync")).toEqual({
+      target: null,
+      source: null,
+    });
+  });
+
+  test("returns null target when only --source present", () => {
+    expect(
+      parseGhRepoSyncTarget("gh repo sync --source perezd/claudetainer"),
+    ).toEqual({
+      target: null,
+      source: { owner: "perezd", repo: "claudetainer" },
+    });
+  });
+
+  test("returns null for non-gh-repo-sync commands", () => {
+    expect(parseGhRepoSyncTarget("gh pr list")).toBeNull();
+  });
+
+  test("returns null for non-gh commands", () => {
+    expect(parseGhRepoSyncTarget("git status")).toBeNull();
+  });
+
+  test("rejects target with special characters", () => {
+    const result = parseGhRepoSyncTarget("gh repo sync evil$(cmd)/repo");
+    expect(result?.target).toBeNull();
+  });
+
+  test("rejects source with special characters", () => {
+    const result = parseGhRepoSyncTarget(
+      "gh repo sync legit/repo --source evil$(cmd)/repo",
+    );
+    expect(result?.source).toBeNull();
+  });
+
+  test("allows dots, hyphens, underscores", () => {
+    expect(parseGhRepoSyncTarget("gh repo sync my-org/my_repo.js")).toEqual({
+      target: { owner: "my-org", repo: "my_repo.js" },
+      source: null,
+    });
+  });
+
+  test("handles extra whitespace", () => {
+    expect(
+      parseGhRepoSyncTarget("gh  repo  sync  limbibot/claudetainer"),
+    ).toEqual({
+      target: { owner: "limbibot", repo: "claudetainer" },
+      source: null,
+    });
+  });
+});
+
+describe("ALWAYS_ESCALATE_HOT_WORDS", () => {
+  test("contains gh pr merge", () => {
+    expect(ALWAYS_ESCALATE_HOT_WORDS.has("gh pr merge")).toBe(true);
+  });
+  test("contains gh pr close", () => {
+    expect(ALWAYS_ESCALATE_HOT_WORDS.has("gh pr close")).toBe(true);
+  });
+  test("contains gh issue close", () => {
+    expect(ALWAYS_ESCALATE_HOT_WORDS.has("gh issue close")).toBe(true);
+  });
+  test("does not contain gh issue comment", () => {
+    expect(ALWAYS_ESCALATE_HOT_WORDS.has("gh issue comment")).toBe(false);
   });
 });
 
@@ -567,5 +678,37 @@ describe("isContextualGhCommand", () => {
     expect(
       await isContextualGhCommand("  gh api repos/perezd/claudetainer/issues"),
     ).toBe(true);
+  });
+
+  test("allows gh repo sync targeting related repo with related --source", async () => {
+    mockSnapshotUrls(standardUrls);
+    expect(
+      await isContextualGhCommand(
+        "gh repo sync limbibot/claudetainer --source perezd/claudetainer --branch main",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects gh repo sync with unrelated --source", async () => {
+    mockSnapshotUrls(standardUrls);
+    expect(
+      await isContextualGhCommand(
+        "gh repo sync limbibot/claudetainer --source evil-org/evil-repo --branch main",
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects gh repo sync targeting unrelated repo", async () => {
+    mockSnapshotUrls(standardUrls);
+    expect(await isContextualGhCommand("gh repo sync evil-org/evil-repo")).toBe(
+      false,
+    );
+  });
+
+  test("rejects gh repo sync with no positional arg", async () => {
+    mockSnapshotUrls(standardUrls);
+    expect(
+      await isContextualGhCommand("gh repo sync --source perezd/claudetainer"),
+    ).toBe(false);
   });
 });

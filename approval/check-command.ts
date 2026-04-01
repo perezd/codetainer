@@ -192,6 +192,67 @@ export function parseGhRepoFlag(command: string): RepoTarget | null {
   return { owner, repo };
 }
 
+const GH_REPO_SYNC_RE = /^gh\s+repo\s+sync\b/;
+const GH_REPO_SYNC_VALUE_FLAGS = /^(--source|--branch|-b)$/;
+
+export interface GhRepoSyncResult {
+  target: RepoTarget | null;
+  source: RepoTarget | null;
+}
+
+export function parseGhRepoSyncTarget(
+  command: string,
+): GhRepoSyncResult | null {
+  if (!GH_REPO_SYNC_RE.test(command)) return null;
+
+  const afterSync = command.replace(/^gh\s+repo\s+sync\b/, "").trim();
+  const tokens = afterSync.split(/\s+/).filter(Boolean);
+
+  let target: RepoTarget | null = null;
+  let source: RepoTarget | null = null;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (GH_REPO_SYNC_VALUE_FLAGS.test(t)) {
+      const value = tokens[++i];
+      if (t === "--source" && value) {
+        const slashIdx = value.indexOf("/");
+        if (slashIdx !== -1) {
+          const owner = value.slice(0, slashIdx);
+          const repo = value.slice(slashIdx + 1);
+          if (
+            owner &&
+            repo &&
+            SAFE_NAME_RE.test(owner) &&
+            SAFE_NAME_RE.test(repo)
+          ) {
+            source = { owner, repo };
+          }
+        }
+      }
+      continue;
+    }
+    if (t.startsWith("-")) continue;
+    if (!target) {
+      const slashIdx = t.indexOf("/");
+      if (slashIdx !== -1) {
+        const owner = t.slice(0, slashIdx);
+        const repo = t.slice(slashIdx + 1);
+        if (
+          owner &&
+          repo &&
+          SAFE_NAME_RE.test(owner) &&
+          SAFE_NAME_RE.test(repo)
+        ) {
+          target = { owner, repo };
+        }
+      }
+    }
+  }
+
+  return { target, source };
+}
+
 const METHOD_RE = /(?:-X\s*|--method[\s=])([A-Za-z]+)/gi;
 const ALLOWED_METHODS = new Set(["GET", "POST", "PATCH"]);
 
@@ -280,6 +341,12 @@ export async function getRelatedRepos(): Promise<RepoTarget[]> {
   }
 }
 
+export const ALWAYS_ESCALATE_HOT_WORDS = new Set([
+  "gh pr merge",
+  "gh pr close",
+  "gh issue close",
+]);
+
 /**
  * Check if a gh command targets a repo associated with configured git remotes.
  * Returns true if the command should be exempted from Haiku classification.
@@ -299,20 +366,30 @@ export async function isContextualGhCommand(command: string): Promise<boolean> {
   // Reject disallowed HTTP methods (anything outside GET/POST/PATCH allowlist)
   if (hasBlockedMethod(cmd)) return false;
 
-  // Parse target repo from the command
-  const target = parseGhApiTarget(cmd) ?? parseGhRepoFlag(cmd);
+  // Parse target repo from the command (including gh repo sync)
+  const syncResult = parseGhRepoSyncTarget(cmd);
+  const target =
+    parseGhApiTarget(cmd) ?? parseGhRepoFlag(cmd) ?? syncResult?.target ?? null;
   if (!target) return false;
 
   // Resolve related repos from git remotes
   const relatedRepos = await getRelatedRepos();
   if (relatedRepos.length === 0) return false;
 
+  const isRelated = (repo: RepoTarget) =>
+    relatedRepos.some(
+      (r) =>
+        r.owner.toLowerCase() === repo.owner.toLowerCase() &&
+        r.repo.toLowerCase() === repo.repo.toLowerCase(),
+    );
+
   // Check if target matches any related repo (case-insensitive)
-  return relatedRepos.some(
-    (r) =>
-      r.owner.toLowerCase() === target.owner.toLowerCase() &&
-      r.repo.toLowerCase() === target.repo.toLowerCase(),
-  );
+  if (!isRelated(target)) return false;
+
+  // For gh repo sync, also validate the --source repo is related
+  if (syncResult?.source && !isRelated(syncResult.source)) return false;
+
+  return true;
 }
 
 const HAS_DELETE_FLAG = /\s--delete\b|\s-[a-zA-Z]*d/;
@@ -429,6 +506,7 @@ if (isMainModule) {
           // (GH_PAT, CLAUDE_CODE_OAUTH_TOKEN, etc.) must always reach Haiku.
           if (
             tierResult.hotWord.startsWith("gh ") &&
+            !ALWAYS_ESCALATE_HOT_WORDS.has(tierResult.hotWord) &&
             (await isContextualGhCommand(command))
           ) {
             console.error(`[HOOK] ALLOW (contextual gh command): ${command}`);
