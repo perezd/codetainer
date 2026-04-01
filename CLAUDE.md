@@ -46,10 +46,27 @@ A full synthetic panel review is required for: changes to any security-layer fil
 
 Select relevant flex specialists based on the nature of the change.
 
+### Security Design Checklist
+
+Before the panel convenes, the design must explicitly address each of the following. These are not optional — gaps here have historically led to mid-PR pivots and late-stage security findings (see #36 AAR).
+
+Responses must cite **specific artifacts** — file paths, permission modes, code locations, data sources, and actor identities. Answers consisting only of "No" or "N/A" without justification will be returned for revision. If a question is genuinely not applicable to the change, state "N/A" with a one-line justification.
+
+Checklist responses are recorded in the design artifact (the issue design comment per Issue-Driven Workflow, or the PR description for changes not tied to an issue).
+
+- **Trust anchor mutability:** Is any data source this design relies on writable at runtime? By whom? Through what mechanisms (direct file edit, command, env var, config include)? (Prevents mutable trust anchors — #36 lesson)
+- **File and output visibility:** Who can read files this design creates or modifies? Could their contents contain credentials, tokens, or other secrets? Trace the origin of every value written to files, logs, stdout, or network — could any upstream source (env vars, config files, user input, API responses) inject sensitive material? (Prevents credential leaks via world-readable files — #36 lesson)
+- **Allowlist vs blocklist:** Does this design enumerate known-good values (allowlist) or known-bad values (blocklist)? If blocklist, what happens when a new value is introduced? (Prevents bypass via unenumerated values)
+- **Fail mode:** When this component errors, does the system fail-open or fail-closed? Is that the right default for this security context? (Prevents silent security degradation on error)
+- **Temporal safety:** At what point in the boot or execution sequence does this operation occur? Are there privilege transitions (chown, setuid, capability drops) before or after that could create a TOCTOU window? (Prevents race conditions around privilege boundaries)
+- **Network exposure:** Does this design introduce, modify, or depend on any network communication (listeners, outbound connections, DNS resolution)? Could it be used to reach cloud metadata endpoints or bypass the domain allowlist? (Prevents network isolation bypass)
+- **Layer compensation:** Does this change weaken any of the three security layers? If so, what compensating control exists in another layer? Describe the specific attack path the weakening enables and how the compensating control blocks it. (Enforces defense-in-depth — core security framework principle)
+
 **Process:**
 
 NOTE: Each expert **MUST** run as a separate subagent with a cleared context. Provide each expert with any associated design/spec documents or plans for extensive review. This could also include any associated background, such as a GitHub issue or an existing PR. Provide commits/diffs if they should be reviewed by the panel as necessary.
 
+0. Verify the design author has completed the Security Design Checklist with specific, justified responses. If responses are missing or incomplete, return the design for revision before proceeding with expert evaluation.
 1. Each expert evaluates the change from their perspective.
 2. Findings are ranked by severity: critical / high / medium / low.
 3. Each delivers a verdict: **approve**, **approve-with-conditions**, or **request-changes**.
