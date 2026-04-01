@@ -6,7 +6,7 @@ This project enforces a three-layer security model. You must evaluate every chan
 
 | Layer                   | Defense                                                                                                                                 | Protects Against                                                                      | Key Files                                                                          |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Container Hardening** | Non-root user (UID 1000), read-only rootfs, size-limited tmpfs (512MB /workspace, 1GB /home/claude, 128MB /tmp)                       | Privilege escalation, persistent compromise, disk-based DoS                           | `Dockerfile`, `scripts/entrypoint.sh`                                              |
+| **Container Hardening** | Non-root user (UID 1000), read-only rootfs, size-limited tmpfs (512MB /workspace, 1GB /home/claude, 128MB /tmp)                         | Privilege escalation, persistent compromise, disk-based DoS                           | `Dockerfile`, `scripts/entrypoint.sh`                                              |
 | **Network Isolation**   | Default-deny iptables (OUTPUT DROP), domain allowlist, CoreDNS NXDOMAIN for unlisted domains, metadata IP blocks, UDP drop (except DNS) | Data exfiltration, C2 communication, unauthorized API access, metadata endpoint abuse | `network/domains.conf`, `network/Corefile.template`, `network/refresh-iptables.sh` |
 | **Command Approval**    | Tier 1 regex hard-block, Tier 2 hot-word escalation, Tier 3 Haiku LLM classification                                                    | Dangerous command execution, credential leaks, lateral movement, tmux injection       | `approval/rules.conf`, `approval/check-command.ts`, `approval/classifier.ts`       |
 
@@ -229,6 +229,14 @@ These superpowers skills are mandatory process gates — not optional.
 **`/executing-plans`:** Always use `superpowers:subagent-driven-development` instead of the base executing-plans skill. Skip the selection prompt — subagent-driven development is the default execution strategy. Only deviate if the user has explicitly instructed otherwise in advance.
 
 **`/finishing-a-development-branch`:** Always default to "Push and create a Pull Request" (Option 2) without presenting the interactive prompt. This aligns with the project's PR-based integration model — all changes go through pull requests. Only deviate from this default if the user has explicitly instructed otherwise in advance.
+
+### Issue-Driven Workflow Gate
+
+When an explicit issue reference is active (see Issue-Driven Workflow), evaluate these overrides **before invoking any skill**. These take precedence over skill-default behaviors per the instruction priority chain (CLAUDE.md > skills > system prompt).
+
+1. **Bug triage order** — If the issue is a bug or regression (by label or description), invoke `/systematic-debugging` before `/brainstorming`. Do not skip this even if the fix seems obvious.
+2. **Artifact routing** — Design specs and implementation plans are posted as comments on the originating issue, not written to local files. Skill defaults for file output paths (`docs/superpowers/specs/`, `docs/superpowers/plans/`) do not apply. See Issue-Driven Workflow § Artifact Routing.
+3. **Panel review gate** — The design comment must complete full panel review with all experts signing off before being posted to the issue. See Issue-Driven Workflow § Comment Sequence.
 
 ---
 
