@@ -66,7 +66,7 @@ Checklist responses are recorded in the design artifact (the issue design commen
 
 NOTE: Each expert **MUST** run as a separate subagent with a cleared context. Provide each expert with any associated design/spec documents or plans for extensive review. This could also include any associated background, such as a GitHub issue or an existing PR. Provide commits/diffs if they should be reviewed by the panel as necessary.
 
-0. Verify the design author has completed the Security Design Checklist with specific, justified responses. If responses are missing or incomplete, return the design for revision before proceeding with expert evaluation.
+0. Before dispatching experts, verify the design author has completed the Security Design Checklist with specific, justified responses. If responses are missing or incomplete, return the design for revision before proceeding with expert evaluation.
 1. Each expert evaluates the change from their perspective.
 2. Findings are ranked by severity: critical / high / medium / low.
 3. Each delivers a verdict: **approve**, **approve-with-conditions**, or **request-changes**.
