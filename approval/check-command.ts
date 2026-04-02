@@ -349,6 +349,72 @@ export function hasCompoundOperators(command: string): boolean {
 }
 
 /**
+ * Safe trailing-pipe filter commands. These are read-only, non-interactive
+ * utilities that only consume stdout — they cannot exfiltrate data, modify
+ * files, or execute arbitrary code.
+ */
+const SAFE_PIPE_FILTERS = new Set(["head", "tail", "jq", "wc", "grep", "cat"]);
+
+/**
+ * Characters that are shell metacharacters in paths. Used to validate
+ * the cd prefix path contains no injection vectors.
+ */
+const PATH_METACHAR_RE = /[;&|`\n$()<>"'*?[\]{}!#~]/;
+
+/**
+ * Extract the core command from a compound command by stripping known-safe
+ * shell wrappers. Returns the original command if no safe wrappers are found.
+ *
+ * Stripping order:
+ * 1. Leading `cd <path> && ` — directory change prefix (path must be clean)
+ * 2. Stderr redirection `2>&1` — output merging
+ * 3. Trailing `| <safe-filter> [args]` — read-only output filtering (repeated)
+ *
+ * Any unrecognized construct remains in the returned string, causing
+ * hasCompoundOperators to catch it downstream (fail-closed).
+ */
+export function extractCoreCommand(command: string): string {
+  let cmd = command;
+
+  // 1. Strip leading `cd <path> && ` prefix
+  const cdMatch = cmd.match(/^cd\s+(\S+)\s+&&\s+/);
+  if (cdMatch) {
+    const path = cdMatch[1];
+    if (!PATH_METACHAR_RE.test(path)) {
+      cmd = cmd.slice(cdMatch[0].length);
+    }
+  }
+
+  // 2. Strip stderr redirection `2>&1`
+  cmd = cmd.replace(/\s*2>&1\s*/g, " ").trim();
+
+  // 3. Strip trailing pipe to safe filter (repeated for chains)
+  let changed = true;
+  while (changed) {
+    changed = false;
+    // Match the last `| <cmd> [args]` segment (greedy .* to find the last pipe)
+    const pipeMatch = cmd.match(/^(.*)\s*\|\s*(\S+)(.*)$/);
+    if (pipeMatch) {
+      const [, before, filterCmd, filterArgs] = pipeMatch;
+      // Only strip if:
+      // a) The filter command is in the safe allowlist
+      // b) The filter args contain no further shell operators
+      if (
+        SAFE_PIPE_FILTERS.has(filterCmd) &&
+        !COMPOUND_OPERATORS_RE.test(
+          filterArgs.replace(SINGLE_QUOTE_PAIR_RE, ""),
+        )
+      ) {
+        cmd = before.trim();
+        changed = true;
+      }
+    }
+  }
+
+  return cmd;
+}
+
+/**
  * Extract owner/repo from a GitHub remote URL.
  * Supports HTTPS and SSH formats. Strips .git suffix.
  * Returns null for non-GitHub URLs.
