@@ -157,6 +157,7 @@ if [[ -f /root/.config/gh/hosts.yml ]]; then
   cp /root/.config/gh/hosts.yml /opt/gh-config/hosts.yml
   chown root:root /opt/gh-config/hosts.yml
   chmod 600 /opt/gh-config/hosts.yml
+  rm -f /root/.config/gh/hosts.yml
 fi
 # Copy non-sensitive config (git_protocol, editor, etc.)
 if [[ -f /root/.config/gh/config.yml ]]; then
