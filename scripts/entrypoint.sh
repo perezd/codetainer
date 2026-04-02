@@ -148,9 +148,8 @@ git config --system credential.https://github.com.helper '!/usr/local/bin/gh aut
 # Mode 600 root:root — the claude user cannot read this directly.
 # The gh-wrapper reads it via a targeted sudoers entry when GH_TOKEN is not in the environment.
 mkdir -p /opt/gh-config
-echo "$GH_PAT" > /opt/gh-config/.ghtoken
+( umask 077 && printf '%s\n' "$GH_PAT" > /opt/gh-config/.ghtoken )
 chown root:root /opt/gh-config/.ghtoken
-chmod 600 /opt/gh-config/.ghtoken
 
 # Remove hosts.yml (written by gh auth login above) — contains the PAT.
 # No longer needed: gh-wrapper uses GH_TOKEN env var, not config files.
