@@ -124,6 +124,8 @@ This must be done after each upstream merge to keep the fork and local checkout 
 
 After creating a PR, poll periodically for comments and review feedback. Address reviewer comments, push updates, and re-request review as needed. Continue polling until the PR is approved and merged, or closed. Never abandon a PR — see it through to resolution.
 
+After every push to a PR branch, review the current PR description (summary, layer-impact assessment, security design checklist, test plan) against the totality of changes in the PR. If any section no longer accurately reflects the implementation, update the PR description in the same operation — do not defer description updates to a later step.
+
 When receiving PR review feedback, always use `/receiving-code-review` before implementing suggestions.
 
 ### Conventional Commits
