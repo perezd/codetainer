@@ -298,14 +298,53 @@ export function hasBlockedMethod(command: string): boolean {
 }
 
 const COMPOUND_OPERATORS_RE = /[;&|`\n$()]/;
+const SINGLE_QUOTE_PAIR_RE = /'[^']*'/g;
 
 /**
  * Check if a command contains compound operators or shell metacharacters.
  * Commands with these are never contextually exempted — they fall through
  * to normal tier evaluation (Haiku).
+ *
+ * Single-quoted string contents are stripped before scanning because bash
+ * single quotes are fully literal — no interpolation, no escaping. Content
+ * inside '...' can never be a shell operator.
+ *
+ * Safety checks before stripping:
+ * - Odd quote count (unmatched) → fail-closed to Haiku
+ * - Token-embedded quotes (adjacent non-whitespace/non-= chars) → fail-closed
+ *   Prevents repo-targeting bypass: repos/good'x'/repo strips to repos/good/repo
+ *   but bash executes goodx/repo
+ *
+ * Double quotes are NOT stripped — they allow interpolation ($(), backticks),
+ * so metacharacters inside double quotes remain legitimately dangerous.
  */
 export function hasCompoundOperators(command: string): boolean {
-  return COMPOUND_OPERATORS_RE.test(command);
+  // Fail-safe: odd number of single quotes means unmatched — send to Haiku
+  const quoteCount = (command.match(/'/g) || []).length;
+  if (quoteCount % 2 !== 0) return true;
+
+  // Adjacency check: reject if any quoted string is embedded in a token.
+  // Standalone args like --jq '.id' have whitespace or = before the opening
+  // quote and whitespace or end-of-string after the closing quote.
+  // Token-embedded quotes like repos/good'x'/repo have non-whitespace adjacent.
+  for (const match of command.matchAll(SINGLE_QUOTE_PAIR_RE)) {
+    const start = match.index!;
+    const end = start + match[0].length;
+    // Check character before opening quote
+    if (start > 0) {
+      const before = command[start - 1];
+      if (before !== " " && before !== "\t" && before !== "=") return true;
+    }
+    // Check character after closing quote
+    if (end < command.length) {
+      const after = command[end];
+      if (after !== " " && after !== "\t") return true;
+    }
+  }
+
+  // Strip single-quoted content, then scan remainder for compound operators
+  const stripped = command.replace(SINGLE_QUOTE_PAIR_RE, "");
+  return COMPOUND_OPERATORS_RE.test(stripped);
 }
 
 /**
