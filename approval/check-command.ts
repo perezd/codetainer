@@ -349,9 +349,14 @@ export function hasCompoundOperators(command: string): boolean {
 }
 
 /**
- * Safe trailing-pipe filter commands. These are read-only, non-interactive
- * utilities that only consume stdout — they cannot exfiltrate data, modify
- * files, or execute arbitrary code.
+ * Safe trailing-pipe filter commands. Read-only, non-interactive utilities
+ * used to consume or filter stdout in a pipeline.
+ *
+ * These commands CAN read files when given filename arguments (e.g.,
+ * `cat /path/to/file`), so the pipe-stripping logic additionally rejects
+ * filter args that look like file paths (starting with /, ~, or .).
+ * Tier 2 hot words on the full command also catch known credential file
+ * names (.npmrc, hosts.yml, .ghtoken) as a compensating control.
  */
 const SAFE_PIPE_FILTERS = new Set(["head", "tail", "jq", "wc", "grep", "cat"]);
 
@@ -399,11 +404,14 @@ export function extractCoreCommand(command: string): string {
       // Only strip if:
       // a) The filter command is in the safe allowlist
       // b) The filter args contain no further shell operators
+      // c) No args look like file paths (safe filters can read files
+      //    when given filename args, bypassing the stdin-only assumption)
+      const strippedArgs = filterArgs.replace(SINGLE_QUOTE_PAIR_RE, "");
+      const hasPathArg = /(?:^|\s)[/~.]/.test(strippedArgs);
       if (
         SAFE_PIPE_FILTERS.has(filterCmd) &&
-        !COMPOUND_OPERATORS_RE.test(
-          filterArgs.replace(SINGLE_QUOTE_PAIR_RE, ""),
-        )
+        !COMPOUND_OPERATORS_RE.test(strippedArgs) &&
+        !hasPathArg
       ) {
         cmd = before.trim();
         changed = true;
@@ -652,8 +660,11 @@ if (isMainModule) {
           // Pre-Haiku: check if this is a contextual gh command.
           // Only apply when the hot word is gh-related — credential hot words
           // (GH_PAT, CLAUDE_CODE_OAUTH_TOKEN, etc.) must always reach Haiku.
-          // Compute extraction tag before the async check — extractCoreCommand
-          // is pure and cheap, and the tag describes the input shape.
+          // Compute extraction tag before the async check. extractCoreCommand
+          // is also called inside isContextualGhCommand — this intentional
+          // duplication keeps the tag computation independent of the callee's
+          // internals. The function is pure, synchronous, and O(n) on short
+          // strings, so the cost is negligible.
           const extracted = extractCoreCommand(command.trimStart());
           const coreExtracted = extracted !== command.trimStart();
           if (
