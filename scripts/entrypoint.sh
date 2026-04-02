@@ -148,9 +148,6 @@ mkdir -p /opt/gh-config
 ( umask 077 && printf '%s\n' "$GH_PAT" > /opt/gh-config/.ghtoken )
 chown root:root /opt/gh-config/.ghtoken
 chmod 600 /opt/gh-config/.ghtoken
-# Defensive cleanup: remove any legacy hosts.yml that may contain a PAT
-# from prior container images that used gh auth login.
-rm -f /root/.config/gh/hosts.yml
 chmod 711 /opt/gh-config
 
 # Sudoers: allow claude to read the token file via the gh-wrapper's fallback mechanism.
