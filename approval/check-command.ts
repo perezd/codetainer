@@ -297,7 +297,7 @@ export function hasBlockedMethod(command: string): boolean {
   return matches.some((m) => !ALLOWED_METHODS.has(m[1].toUpperCase()));
 }
 
-const COMPOUND_OPERATORS_RE = /[;&|`\n$()]/;
+const COMPOUND_OPERATORS_RE = /[;&|`\n$()<>]/;
 const SINGLE_QUOTE_PAIR_RE = /'[^']*'/g;
 
 /**
@@ -346,6 +346,109 @@ export function hasCompoundOperators(command: string): boolean {
   // Strip single-quoted content, then scan remainder for compound operators
   const stripped = command.replace(SINGLE_QUOTE_PAIR_RE, "");
   return COMPOUND_OPERATORS_RE.test(stripped);
+}
+
+/**
+ * Safe trailing-pipe filter commands. Read-only, non-interactive utilities
+ * that only consume stdin in a pipeline. Commands that can read files
+ * from arguments (like `cat`) are excluded — even though `| cat` with
+ * no args is a harmless passthrough, allowing it opens a bypass via
+ * `| cat secrets.txt` with relative paths that evade the path check.
+ *
+ * Tier 2 hot words on the full command also catch known credential file
+ * names (.npmrc, hosts.yml, .ghtoken) as a compensating control.
+ */
+const SAFE_PIPE_FILTERS = new Set(["head", "tail", "jq", "wc", "grep"]);
+
+/**
+ * Characters that are shell metacharacters in paths. Used to validate
+ * the cd prefix path contains no injection vectors.
+ */
+const PATH_METACHAR_RE = /[;&|`\n$()<>"'*?[\]{}!#~]/;
+
+/**
+ * Find the index of the last `|` character that is not inside single quotes.
+ * Returns -1 if no unquoted pipe is found.
+ */
+function findLastUnquotedPipe(cmd: string): number {
+  let inSingleQuote = false;
+  let lastPipe = -1;
+  for (let i = 0; i < cmd.length; i++) {
+    if (cmd[i] === "'" && !inSingleQuote) {
+      inSingleQuote = true;
+    } else if (cmd[i] === "'" && inSingleQuote) {
+      inSingleQuote = false;
+    } else if (cmd[i] === "|" && !inSingleQuote) {
+      lastPipe = i;
+    }
+  }
+  return lastPipe;
+}
+
+/**
+ * Extract the core command from a compound command by stripping known-safe
+ * shell wrappers. Returns the original command if no safe wrappers are found.
+ *
+ * Stripping order:
+ * 1. Leading `cd <path> && ` — directory change prefix (path must be clean)
+ * 2. Stderr redirection `2>&1` — output merging
+ * 3. Trailing `| <safe-filter> [args]` — read-only output filtering (repeated)
+ *
+ * Any unrecognized construct remains in the returned string, causing
+ * hasCompoundOperators to catch it downstream (fail-closed).
+ */
+export function extractCoreCommand(command: string): string {
+  let cmd = command;
+
+  // 1. Strip leading `cd <path> && ` prefix
+  const cdMatch = cmd.match(/^cd\s+(\S+)\s+&&\s+/);
+  if (cdMatch) {
+    const path = cdMatch[1];
+    if (!PATH_METACHAR_RE.test(path)) {
+      cmd = cmd.slice(cdMatch[0].length);
+    }
+  }
+
+  // 2. Strip stderr redirection `2>&1`
+  cmd = cmd.replace(/\s*2>&1\s*/g, " ").trim();
+
+  // 3. Strip trailing pipe to safe filter (repeated for chains).
+  //    Find the last UNQUOTED pipe to avoid splitting on `|` inside
+  //    single-quoted arguments (e.g., jq '.items | .id').
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const lastPipe = findLastUnquotedPipe(cmd);
+    if (lastPipe >= 0) {
+      const before = cmd.slice(0, lastPipe);
+      const afterPipe = cmd.slice(lastPipe + 1).trimStart();
+      const spaceIdx = afterPipe.indexOf(" ");
+      const filterCmd =
+        spaceIdx >= 0 ? afterPipe.slice(0, spaceIdx) : afterPipe;
+      const filterArgs = spaceIdx >= 0 ? afterPipe.slice(spaceIdx) : "";
+      // Only strip if:
+      // a) The filter command is in the safe allowlist
+      // b) The filter args contain no further shell operators
+      // c) No args look like file paths (safe filters can read files
+      //    when given filename args, bypassing the stdin-only assumption)
+      const strippedArgs = filterArgs.replace(SINGLE_QUOTE_PAIR_RE, "");
+      // Check for file-path args on the ORIGINAL filterArgs (before
+      // single-quote stripping) so that quoted paths like '/etc/passwd'
+      // are still caught. The `.` prefix requires a following `/` to
+      // distinguish `./config` (path) from `.field` (jq expression).
+      const hasPathArg = /(?:^|\s)["']?(?:[/~]|\.\.?\/)/.test(filterArgs);
+      if (
+        SAFE_PIPE_FILTERS.has(filterCmd) &&
+        !COMPOUND_OPERATORS_RE.test(strippedArgs) &&
+        !hasPathArg
+      ) {
+        cmd = before.trim();
+        changed = true;
+      }
+    }
+  }
+
+  return cmd;
 }
 
 /**
@@ -432,17 +535,21 @@ export async function isContextualGhCommand(command: string): Promise<boolean> {
   // regexes would miss commands with leading spaces.
   const cmd = command.trimStart();
 
-  // Reject compound commands — they must go through Haiku
-  if (hasCompoundOperators(cmd)) return false;
+  // Strip known-safe shell wrappers, then reject remaining compound operators
+  const coreCmd = extractCoreCommand(cmd);
+  if (hasCompoundOperators(coreCmd)) return false;
 
   // Reject disallowed HTTP methods (anything outside GET/POST/PATCH allowlist).
   // Only applies to gh api — other subcommands don't use -X/--method flags.
-  if (/^gh\s+api\b/.test(cmd) && hasBlockedMethod(cmd)) return false;
+  if (/^gh\s+api\b/.test(coreCmd) && hasBlockedMethod(coreCmd)) return false;
 
   // Parse target repo from the command (including gh repo sync)
-  const syncResult = parseGhRepoSyncTarget(cmd);
+  const syncResult = parseGhRepoSyncTarget(coreCmd);
   const target =
-    parseGhApiTarget(cmd) ?? parseGhRepoFlag(cmd) ?? syncResult?.target ?? null;
+    parseGhApiTarget(coreCmd) ??
+    parseGhRepoFlag(coreCmd) ??
+    syncResult?.target ??
+    null;
   if (!target) return false;
 
   // Resolve related repos from git remotes
@@ -582,12 +689,22 @@ if (isMainModule) {
           // Pre-Haiku: check if this is a contextual gh command.
           // Only apply when the hot word is gh-related — credential hot words
           // (GH_PAT, CLAUDE_CODE_OAUTH_TOKEN, etc.) must always reach Haiku.
+          // Compute extraction tag before the async check. extractCoreCommand
+          // is also called inside isContextualGhCommand — this intentional
+          // duplication keeps the tag computation independent of the callee's
+          // internals. The function is pure, synchronous, and O(n) on short
+          // strings, so the cost is negligible.
+          const extracted = extractCoreCommand(command.trimStart());
+          const coreExtracted = extracted !== command.trimStart();
           if (
             tierResult.hotWord.startsWith("gh ") &&
             !ALWAYS_ESCALATE_HOT_WORDS.has(tierResult.hotWord) &&
             (await isContextualGhCommand(command))
           ) {
-            console.error(`[HOOK] ALLOW (contextual gh command): ${command}`);
+            const tag = coreExtracted
+              ? "contextual gh command, core-extracted"
+              : "contextual gh command";
+            console.error(`[HOOK] ALLOW (${tag}): ${command}`);
             outputDecision("allow");
             process.exit(0);
           }
