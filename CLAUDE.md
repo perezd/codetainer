@@ -92,6 +92,12 @@ All work — whether writing code, answering questions, or reviewing files — s
 
 All changes happen in git worktrees, never directly on main. Each worktree gets a descriptive branch name reflecting the change.
 
+**Subagent working directory discipline:** When dispatching subagents (implementation agents, panel review experts, or any Agent tool invocation that will modify files or commit):
+
+1. **Include the worktree absolute path** in every subagent task description. Subagents start with a fresh context and default to the repo root — they will commit to main unless explicitly directed elsewhere.
+2. **Require CWD verification before commits.** The subagent must confirm its working directory matches the intended worktree path before staging or committing any changes.
+3. **Consider `isolation: "worktree"`** on the Agent tool as an alternative. This gives each subagent its own isolated worktree and branch, preventing accidental commits to main. Use this when subagents work on independent tasks that don't need to build on each other's changes in a shared branch. Use a shared worktree (items 1–2) when subagents must coordinate sequential work on the same branch.
+
 ### PR-Based Integration
 
 Every change goes through a pull request — no direct commits to main. PR descriptions must include:
