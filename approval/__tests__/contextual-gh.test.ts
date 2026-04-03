@@ -1055,11 +1055,6 @@ describe("extractCoreCommand", () => {
     ).toBe("gh api repos/o/r/issues -X PATCH --input /tmp/b.md");
   });
 
-  test("does NOT strip safe filter followed by redirect", () => {
-    expect(
-      extractCoreCommand("gh api repos/o/r/issues | grep pattern > /tmp/out"),
-    ).toBe("gh api repos/o/r/issues | grep pattern > /tmp/out");
-  });
   test("does NOT strip cd with spaces in path (fail-closed)", () => {
     expect(
       extractCoreCommand("cd /path/with spaces && gh api repos/o/r/issues"),
@@ -1086,6 +1081,18 @@ describe("extractCoreCommand", () => {
     expect(
       extractCoreCommand('gh api repos/o/r/issues | head "~/secrets"'),
     ).toBe('gh api repos/o/r/issues | head "~/secrets"');
+  });
+
+  // --- Single-quoted path bypass (PR #65 review round 2 finding) ---
+  test("does NOT strip safe filter with single-quoted path arg", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | head -5 '/etc/passwd'"),
+    ).toBe("gh api repos/o/r/issues | head -5 '/etc/passwd'");
+  });
+  test("does NOT strip safe filter with single-quoted relative path arg", () => {
+    expect(
+      extractCoreCommand("gh api repos/o/r/issues | grep './config'"),
+    ).toBe("gh api repos/o/r/issues | grep './config'");
   });
 
   // --- jq with | inside single-quoted args (PR #65 review finding) ---

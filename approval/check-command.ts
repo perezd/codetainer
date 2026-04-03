@@ -432,7 +432,11 @@ export function extractCoreCommand(command: string): string {
       // c) No args look like file paths (safe filters can read files
       //    when given filename args, bypassing the stdin-only assumption)
       const strippedArgs = filterArgs.replace(SINGLE_QUOTE_PAIR_RE, "");
-      const hasPathArg = /(?:^|\s)["']?[/~.]/.test(strippedArgs);
+      // Check for file-path args on the ORIGINAL filterArgs (before
+      // single-quote stripping) so that quoted paths like '/etc/passwd'
+      // are still caught. The `.` prefix requires a following `/` to
+      // distinguish `./config` (path) from `.field` (jq expression).
+      const hasPathArg = /(?:^|\s)["']?(?:[/~]|\.\.?\/)/.test(filterArgs);
       if (
         SAFE_PIPE_FILTERS.has(filterCmd) &&
         !COMPOUND_OPERATORS_RE.test(strippedArgs) &&
