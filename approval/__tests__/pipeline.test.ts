@@ -116,6 +116,14 @@ describe("pipeline integration — deny", () => {
     expect(quickEval("git push -u origin main")).toBe("deny"));
   test("denies git remote add", () =>
     expect(quickEval("git remote add evil https://evil.com")).toBe("deny"));
+  test("denies git remote rename", () =>
+    expect(quickEval("git remote rename origin upstream")).toBe("deny"));
+  test("denies git remote remove", () =>
+    expect(quickEval("git remote remove origin")).toBe("deny"));
+  test("denies git push HEAD:main refspec", () =>
+    expect(quickEval("git push origin HEAD:main")).toBe("deny"));
+  test("denies git push refs/heads/main", () =>
+    expect(quickEval("git push origin refs/heads/main")).toBe("deny"));
   test("denies git tag", () => expect(quickEval("git tag v1.0")).toBe("deny"));
 
   // gh destructive
@@ -146,6 +154,14 @@ describe("pipeline integration — deny", () => {
   // Compound command — each segment evaluated independently
   test("denies compound with dangerous segment", () =>
     expect(quickEval("echo hello && sudo reboot")).toBe("deny"));
+
+  // Background operator — segments split on &
+  test("denies sudo after & (background operator)", () =>
+    expect(quickEval("echo ok & sudo reboot")).toBe("deny"));
+
+  // Environment assignment prefix
+  test("denies sudo prefixed with env assignment", () =>
+    expect(quickEval("FOO=bar sudo reboot")).toBe("deny"));
 
   // Subshell
   test("denies unquoted subshell $()", () =>

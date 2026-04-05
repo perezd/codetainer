@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "fs";
+import { existsSync, statSync, openSync, readSync, closeSync } from "fs";
 import SYSTEM_PROMPT from "./system-prompt.txt" with { type: "text" };
 
 export type Verdict =
@@ -18,11 +18,37 @@ const MAX_FILES = 3;
  */
 export function parseVerdict(text: string): Verdict {
   try {
-    const jsonMatch = text.match(/\{[^}]*"verdict"[^}]*\}/);
-    if (!jsonMatch) return { verdict: "block", reason: "no JSON in response" };
+    const trimmed = text.trim();
+    let parsed: Record<string, unknown>;
 
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!VALID_VERDICTS.has(parsed.verdict)) {
+    // Try direct parse first (clean JSON response)
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      // Extract JSON with brace balancing for responses with surrounding text
+      const start = trimmed.indexOf("{");
+      if (start === -1)
+        return { verdict: "block", reason: "no JSON in response" };
+
+      let depth = 0;
+      let end = -1;
+      for (let i = start; i < trimmed.length; i++) {
+        if (trimmed[i] === "{") depth++;
+        else if (trimmed[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            end = i + 1;
+            break;
+          }
+        }
+      }
+      if (end === -1)
+        return { verdict: "block", reason: "no JSON in response" };
+
+      parsed = JSON.parse(trimmed.slice(start, end));
+    }
+
+    if (!VALID_VERDICTS.has(parsed.verdict as string)) {
       return { verdict: "block", reason: `unknown verdict: ${parsed.verdict}` };
     }
 
@@ -30,14 +56,24 @@ export function parseVerdict(text: string): Verdict {
       if (!Array.isArray(parsed.files)) {
         return { verdict: "block", reason: "need_files without files array" };
       }
+      // Validate entries are strings and enforce MAX_FILES
+      const validFiles = parsed.files
+        .filter((f: unknown): f is string => typeof f === "string")
+        .slice(0, MAX_FILES);
+      if (validFiles.length === 0) {
+        return { verdict: "block", reason: "need_files with no valid paths" };
+      }
       return {
         verdict: "need_files",
-        files: parsed.files,
-        reason: parsed.reason || "",
+        files: validFiles,
+        reason: (parsed.reason as string) || "",
       };
     }
 
-    return { verdict: parsed.verdict, reason: parsed.reason || "" };
+    return {
+      verdict: parsed.verdict as "allow" | "block" | "approve",
+      reason: (parsed.reason as string) || "",
+    };
   } catch {
     return { verdict: "block", reason: "failed to parse verdict" };
   }
@@ -65,14 +101,26 @@ function readFileForInspection(path: string): string {
   if (!existsSync(path)) return "<file not found>";
 
   try {
-    const content = readFileSync(path);
+    // Check file size before reading to avoid unnecessary memory use
+    const stat = statSync(path);
+    if (!stat.isFile()) return "<not a regular file>";
+    const fileSize = stat.size;
+
+    if (fileSize === 0) return "";
+
+    // Read only what we need
+    const readSize = Math.min(fileSize, MAX_FILE_SIZE + 1);
+    const fd = openSync(path, "r");
+    const buf = new Uint8Array(readSize);
+    readSync(fd, buf, 0, readSize, 0);
+    closeSync(fd);
 
     // Binary detection: check first 512 bytes for null bytes
-    const header = content.subarray(0, 512);
+    const header = buf.subarray(0, Math.min(512, readSize));
     if (header.includes(0)) return "<binary file, not shown>";
 
-    const text = content.toString("utf-8");
-    if (text.length > MAX_FILE_SIZE) {
+    const text = new TextDecoder().decode(buf);
+    if (fileSize > MAX_FILE_SIZE) {
       return text.slice(0, MAX_FILE_SIZE) + "\n<truncated at 8KB>";
     }
 
@@ -120,9 +168,8 @@ export async function classifyWithHaiku(
     return turn1Verdict;
   }
 
-  // Between turns: read requested files
-  const requestedFiles = turn1Verdict.files.slice(0, MAX_FILES);
-  const fileContents = requestedFiles.map((path) => ({
+  // Between turns: read requested files (already capped at MAX_FILES by parseVerdict)
+  const fileContents = turn1Verdict.files.map((path) => ({
     path,
     content: readFileForInspection(path),
   }));

@@ -13,6 +13,20 @@ interface SegmentResult {
   reason: string;
 }
 
+/** High-consequence gh subcommands that must always reach Haiku. */
+const HIGH_CONSEQUENCE_GH: Array<[string, string]> = [
+  ["pr", "merge"],
+  ["pr", "close"],
+  ["issue", "close"],
+];
+
+function isHighConsequenceGh(segment: { positionals: string[] }): boolean {
+  return HIGH_CONSEQUENCE_GH.some(
+    ([sub1, sub2]) =>
+      segment.positionals[0] === sub1 && segment.positionals[1] === sub2,
+  );
+}
+
 /**
  * Evaluate a single segment through layers 6a-6g.
  */
@@ -57,7 +71,8 @@ async function evaluateSegment(
   // 6d. Structural escalation rules
   if (ruleResult.decision === "escalate") {
     // 6e. Contextual gh exemption
-    if (segment.program === "gh") {
+    // High-consequence ops always go to Haiku, even for related repos
+    if (segment.program === "gh" && !isHighConsequenceGh(segment)) {
       const ghResult = await checkGhExemption(segment);
       if (ghResult === "allow") {
         return { decision: "allow", reason: "related repo gh command" };

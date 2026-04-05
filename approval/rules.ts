@@ -203,27 +203,49 @@ function denyCheck(seg: ParsedSegment): RuleResult | null {
         };
       }
 
-      // Push to main/master (positional after "origin")
-      const remote = seg.positionals[1]; // e.g. "origin"
-      const branch = seg.positionals[2]; // e.g. "main"
-      if (branch === "main" || branch === "master") {
-        return {
-          decision: "deny",
-          reason: `git push to ${branch} is not allowed`,
-        };
-      }
-      // Also catch: git push origin main (remote=origin, branch=main)
-      if (remote === "main" || remote === "master") {
-        return {
-          decision: "deny",
-          reason: `git push to ${remote} is not allowed`,
-        };
+      // Push to main/master — check positionals and refspec forms
+      for (const pos of seg.positionals.slice(1)) {
+        // Exact branch name
+        if (pos === "main" || pos === "master") {
+          return {
+            decision: "deny",
+            reason: `git push to ${pos} is not allowed`,
+          };
+        }
+        // Refspec form: HEAD:main, src:refs/heads/main, etc.
+        const colonIdx = pos.indexOf(":");
+        if (colonIdx >= 0) {
+          const dest = pos.slice(colonIdx + 1);
+          const destBranch = dest.replace(/^refs\/heads\//, "");
+          if (destBranch === "main" || destBranch === "master") {
+            return {
+              decision: "deny",
+              reason: `git push refspec targeting ${destBranch} is not allowed`,
+            };
+          }
+        }
+        // refs/heads/main as a standalone positional
+        const stripped = pos.replace(/^refs\/heads\//, "");
+        if (
+          stripped !== pos &&
+          (stripped === "main" || stripped === "master")
+        ) {
+          return {
+            decision: "deny",
+            reason: `git push to ${stripped} is not allowed`,
+          };
+        }
       }
     }
 
     if (sub === "remote") {
       const action = seg.positionals[1];
-      if (action === "add" || action === "set-url") {
+      if (
+        action === "add" ||
+        action === "set-url" ||
+        action === "rename" ||
+        action === "remove"
+      ) {
         return {
           decision: "deny",
           reason: `git remote ${action} can redirect push destinations`,

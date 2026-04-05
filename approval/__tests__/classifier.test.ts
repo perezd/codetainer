@@ -49,6 +49,46 @@ describe("parseVerdict", () => {
     const v = parseVerdict('{"verdict":"unknown","reason":"bad"}');
     expect(v.verdict).toBe("block");
   });
+
+  test("handles brace in reason via brace-balanced extraction", () => {
+    const v = parseVerdict(
+      'Analysis: {"verdict":"block","reason":"found { in code"} end',
+    );
+    // Brace balancing may truncate at the inner }, but JSON.parse fails → block
+    expect(v.verdict).toBe("block");
+  });
+
+  test("parses clean JSON directly without regex", () => {
+    const v = parseVerdict('{"verdict":"allow","reason":"safe command"}');
+    expect(v).toEqual({ verdict: "allow", reason: "safe command" });
+  });
+
+  test("filters non-string entries from need_files", () => {
+    const v = parseVerdict(
+      '{"verdict":"need_files","files":["/tmp/a.json",42,null],"reason":"inspect"}',
+    );
+    expect(v.verdict).toBe("need_files");
+    if (v.verdict === "need_files") {
+      expect(v.files).toEqual(["/tmp/a.json"]);
+    }
+  });
+
+  test("blocks need_files with no valid string paths", () => {
+    const v = parseVerdict(
+      '{"verdict":"need_files","files":[42,null,true],"reason":"inspect"}',
+    );
+    expect(v.verdict).toBe("block");
+  });
+
+  test("caps need_files at MAX_FILES (3)", () => {
+    const v = parseVerdict(
+      '{"verdict":"need_files","files":["/tmp/a","/tmp/b","/tmp/c","/tmp/d","/tmp/e"],"reason":""}',
+    );
+    expect(v.verdict).toBe("need_files");
+    if (v.verdict === "need_files") {
+      expect(v.files).toHaveLength(3);
+    }
+  });
 });
 
 describe("validateFilePath", () => {

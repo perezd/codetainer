@@ -41,6 +41,12 @@ describe("tokenize", () => {
     const strings = tokens.filter((t): t is string => typeof t === "string");
     expect(strings).toContain("hello $(world)");
   });
+
+  test("preserves $VAR as literal string instead of replacing with empty", () => {
+    const tokens = tokenize("$SHELL -c foo");
+    const strings = tokens.filter((t): t is string => typeof t === "string");
+    expect(strings[0]).toBe("$SHELL");
+  });
 });
 
 describe("splitSegments", () => {
@@ -77,6 +83,21 @@ describe("splitSegments", () => {
     expect(segments[0].isPipeTarget).toBe(false);
     expect(segments[1].isPipeTarget).toBe(true);
     expect(segments[2].isPipeTarget).toBe(false);
+  });
+
+  test("splits on & (background operator)", () => {
+    const tokens = tokenize("echo ok & sudo reboot");
+    const segments = splitSegments(tokens);
+    expect(segments).toHaveLength(2);
+    const seg2 = parseSegment(segments[1].tokens, segments[1].isPipeTarget);
+    expect(seg2.program).toBe("sudo");
+  });
+
+  test("splits on |& (stderr pipe)", () => {
+    const tokens = tokenize("echo hi |& grep hi");
+    const segments = splitSegments(tokens);
+    expect(segments).toHaveLength(2);
+    expect(segments[1].isPipeTarget).toBe(true);
   });
 });
 
@@ -161,6 +182,14 @@ describe("parseSegment", () => {
     const tokens: ShellToken[] = ["grep", "hello"];
     const seg = parseSegment(tokens, true);
     expect(seg.isPipeTarget).toBe(true);
+  });
+
+  test("skips leading NAME=VALUE env assignments to find program", () => {
+    const tokens: ShellToken[] = ["FOO=bar", "BAZ=qux", "sudo", "reboot"];
+    const seg = parseSegment(tokens, false);
+    expect(seg.program).toBe("sudo");
+    expect(seg.args).toContain("FOO=bar");
+    expect(seg.args).toContain("BAZ=qux");
   });
 
   test("handles --force-with-lease as distinct from --force", () => {

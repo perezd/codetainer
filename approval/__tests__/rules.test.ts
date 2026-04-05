@@ -223,6 +223,30 @@ describe("deny rules", () => {
         ).decision,
       ).not.toBe("deny");
     });
+    test("denies git push with refspec HEAD:main", () => {
+      expect(
+        evaluateRules(seg(["git", "push", "origin", "HEAD:main"])).decision,
+      ).toBe("deny");
+    });
+    test("denies git push with refspec refs/heads/main", () => {
+      expect(
+        evaluateRules(seg(["git", "push", "origin", "refs/heads/main"]))
+          .decision,
+      ).toBe("deny");
+    });
+    test("denies git push with refspec src:refs/heads/master", () => {
+      expect(
+        evaluateRules(seg(["git", "push", "origin", "feat:refs/heads/master"]))
+          .decision,
+      ).toBe("deny");
+    });
+    test("allows git push with refspec to feature branch", () => {
+      expect(
+        evaluateRules(
+          seg(["git", "push", "origin", "HEAD:refs/heads/feat/new"]),
+        ).decision,
+      ).not.toBe("deny");
+    });
     test("denies git remote add", () => {
       expect(
         evaluateRules(
@@ -235,6 +259,17 @@ describe("deny rules", () => {
         evaluateRules(
           seg(["git", "remote", "set-url", "origin", "https://evil.com"]),
         ).decision,
+      ).toBe("deny");
+    });
+    test("denies git remote rename", () => {
+      expect(
+        evaluateRules(seg(["git", "remote", "rename", "origin", "upstream"]))
+          .decision,
+      ).toBe("deny");
+    });
+    test("denies git remote remove", () => {
+      expect(
+        evaluateRules(seg(["git", "remote", "remove", "origin"])).decision,
       ).toBe("deny");
     });
     test("denies git config remote.", () => {

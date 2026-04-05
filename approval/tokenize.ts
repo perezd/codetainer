@@ -23,9 +23,19 @@ export interface RawSegment {
 const COMPOUND_OPS = new Set(["&&", "||", ";"]);
 const REDIRECTION_OPS = new Set([">", ">>", ">&", "<", "<<", "<&"]);
 const SUBSHELL_OPS = new Set(["(", ")", "<(", ">(", "$(", "`"]);
+const ENV_ASSIGNMENT = /^[a-zA-Z_][a-zA-Z0-9_]*=/;
+
+/**
+ * Preserve environment variable references as literal strings.
+ * Without this, shell-quote replaces $VAR with "" when no env is provided,
+ * which can make programs disappear and bypass deny rules.
+ */
+function preserveEnvReference(key: string): string {
+  return `$${key}`;
+}
 
 export function tokenize(line: string): ShellToken[] {
-  return parse(line) as ShellToken[];
+  return parse(line, preserveEnvReference) as ShellToken[];
 }
 
 export function splitSegments(tokens: ShellToken[]): RawSegment[] {
@@ -35,13 +45,13 @@ export function splitSegments(tokens: ShellToken[]): RawSegment[] {
 
   for (const token of tokens) {
     if (typeof token === "object" && token.op) {
-      if (COMPOUND_OPS.has(token.op)) {
+      if (COMPOUND_OPS.has(token.op) || token.op === "&") {
         if (current.length > 0) {
           segments.push({ tokens: current, isPipeTarget: nextIsPipeTarget });
           current = [];
           nextIsPipeTarget = false;
         }
-      } else if (token.op === "|") {
+      } else if (token.op === "|" || token.op === "|&") {
         if (current.length > 0) {
           segments.push({ tokens: current, isPipeTarget: nextIsPipeTarget });
           current = [];
@@ -80,6 +90,12 @@ export function parseSegment(
   while (i < tokens.length) {
     const token = tokens[i];
     if (typeof token === "string") {
+      // Skip leading NAME=VALUE environment assignments
+      if (ENV_ASSIGNMENT.test(token)) {
+        args.push(token);
+        i++;
+        continue;
+      }
       const lastSlash = token.lastIndexOf("/");
       program = lastSlash >= 0 ? token.slice(lastSlash + 1) : token;
       i++;

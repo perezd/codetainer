@@ -94,12 +94,12 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Severity:** Low
 - **Date identified:** 2026-04-05 (identified during tokenizer-first-approval redesign, #68)
 
-### gh pr merge auto-approved for related repos
+### gh pr merge escalated to Haiku for related repos
 
 - **Affected layer:** Command Approval
-- **Description:** `gh pr merge` targeting repos matching configured git remotes is escalated to Haiku but not hard-blocked. Risk: unintended merge of a malicious PR if Haiku misjudges the command.
+- **Description:** `gh pr merge` targeting repos matching configured git remotes is always escalated to Haiku for classification (never auto-allowed via the related-repo exemption). High-consequence operations (`gh pr merge`, `gh pr close`, `gh issue close`) are explicitly excluded from the contextual exemption. Risk: unintended merge if Haiku misjudges the command.
 - **Why it can't be resolved:** The agent's core workflow requires merging PRs as part of the development lifecycle. Hard-blocking would require human intervention for every merge.
-- **Compensating controls:** Branch protection rules on the target repository are the external gate — repos without branch protection are accepting this risk at the repository level. The command always reaches Haiku for classification (never auto-allowed). The boot-time remote snapshot ensures only related repos are eligible for the contextual exemption path.
+- **Compensating controls:** Branch protection rules on the target repository are the external gate — repos without branch protection are accepting this risk at the repository level. The command always reaches Haiku for classification (never auto-allowed). The `isHighConsequenceGh()` guard in `check-command.ts` ensures these operations bypass the contextual exemption. The boot-time remote snapshot ensures only related repos are eligible for non-high-consequence exemptions.
 - **Severity:** Low
 - **Date identified:** 2026-04-05 (identified during tokenizer-first-approval redesign, #68)
 
