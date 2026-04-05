@@ -138,13 +138,19 @@ function denyCheck(seg: ParsedSegment): RuleResult | null {
   }
 
   // /dev/tcp/ or /dev/udp/ bash network redirection
-  if (
-    seg.args.some((a) => a.startsWith("/dev/tcp/") || a.startsWith("/dev/udp/"))
-  ) {
-    return {
-      decision: "deny",
-      reason: "/dev/tcp/ and /dev/udp/ are bash network sockets",
-    };
+  // Check both args (positional use) and redirection targets (e.g. > /dev/tcp/...)
+  {
+    const allPaths = [...seg.args, ...seg.redirections.map((r) => r.target)];
+    if (
+      allPaths.some(
+        (a) => a.startsWith("/dev/tcp/") || a.startsWith("/dev/udp/"),
+      )
+    ) {
+      return {
+        decision: "deny",
+        reason: "/dev/tcp/ and /dev/udp/ are bash network sockets",
+      };
+    }
   }
 
   // 5. find -exec / -execdir
