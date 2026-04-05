@@ -1,746 +1,181 @@
-import { readFileSync } from "fs";
-import { parseRules, type Rules } from "./rules";
+import { normalizeAndSplit, prescanLine } from "./prescan";
+import { tokenize, splitSegments, parseSegment } from "./tokenize";
+import { evaluateRules } from "./rules";
+import { checkOwnedRemotePush } from "./ownership";
+import { checkGhExemption } from "./gh-exemption";
 import { classifyWithHaiku } from "./classifier";
 import { outputDecision } from "./hook-output";
 
-// --- Exported for testing ---
+type Decision = "allow" | "deny" | "ask";
 
-export type TierResult =
-  | { decision: "allow" }
-  | { decision: "deny"; reason: string; rule: string }
-  | { decision: "escalate"; hotWord: string };
+interface SegmentResult {
+  decision: Decision;
+  reason: string;
+}
 
-export function evaluateTiers(command: string, rules: Rules): TierResult {
-  // Tier 1: Hard-block
-  for (const rule of rules.blocks) {
-    if (rule.pattern.test(command)) {
-      return { decision: "deny", reason: command, rule: rule.raw };
+/**
+ * Evaluate a single segment through layers 6a-6g.
+ */
+async function evaluateSegment(
+  tokens: Array<string | { op: string }>,
+  isPipeTarget: boolean,
+  rawLine: string,
+): Promise<SegmentResult> {
+  const segment = parseSegment(tokens, isPipeTarget);
+
+  // 6a. Structural signal check
+  if (segment.hasOperatorTokens) {
+    return { decision: "deny", reason: "subshell/substitution operator" };
+  }
+  if (segment.hasBackticks) {
+    return { decision: "deny", reason: "backtick command substitution" };
+  }
+  if (segment.hasEmbeddedSubstitution) {
+    // Escalate to Haiku — potentially legitimate (commit messages)
+    const verdict = await classifyWithHaiku(rawLine);
+    if (verdict.verdict === "block")
+      return { decision: "deny", reason: verdict.reason };
+    if (verdict.verdict === "approve")
+      return { decision: "ask", reason: verdict.reason };
+    return { decision: "allow", reason: verdict.reason };
+  }
+
+  // 6b. Structural deny rules (before ownership exemption)
+  const ruleResult = evaluateRules(segment);
+  if (ruleResult.decision === "deny") {
+    return { decision: "deny", reason: ruleResult.reason };
+  }
+
+  // 6c. Owned-remote push exemption (after deny rules)
+  if (segment.program === "git" && segment.positionals[0] === "push") {
+    const isOwned = await checkOwnedRemotePush(segment);
+    if (isOwned) {
+      return { decision: "allow", reason: "owned remote push" };
     }
   }
 
-  // Tier 2: Hot-word scan (normalize whitespace to prevent bypass via extra spaces/tabs/newlines)
-  const normalized = command.replace(/\s+/g, " ").trim();
-  const matchedHotWord = rules.hotWords.find((hw) => normalized.includes(hw));
-  if (matchedHotWord) {
-    return { decision: "escalate", hotWord: matchedHotWord };
-  }
-
-  return { decision: "allow" };
-}
-
-// --- Ownership exemption helpers (exported for testing) ---
-
-const GIT_PUSH_RE = /^git\s+push\b/;
-
-// Flags that consume the next token as a value (e.g., -o <value>, --repo <value>).
-// If present, we can't reliably parse the remote name, so we refuse the exemption.
-const VALUE_CONSUMING_FLAGS =
-  /^(-o|--push-option|--repo|--receive-pack|--exec|--signed)$/;
-
-/**
- * Parse the target remote name from a git push command string.
- * Skips flags (tokens starting with -). Returns the first positional
- * argument after "git push".
- * Returns null if:
- *   - the command is not a git push
- *   - no explicit remote is specified (bare "git push" — can't assume origin
- *     because git config like remote.pushDefault may override it)
- *   - value-consuming flags are present (e.g., -o <value>) which make
- *     positional parsing unreliable
- */
-export function parseRemoteFromPushCommand(command: string): string | null {
-  if (!GIT_PUSH_RE.test(command)) return null;
-
-  // Tokenize everything after "git push"
-  const afterPush = command.replace(GIT_PUSH_RE, "").trim();
-  if (!afterPush) return null;
-
-  const tokens = afterPush.split(/\s+/);
-
-  // Bail if any value-consuming flags are present — positional parsing is unreliable
-  for (const token of tokens) {
-    if (VALUE_CONSUMING_FLAGS.test(token)) return null;
-    // Also catch --option=value forms of value-consuming flags
-    const eqFlag = token.split("=")[0];
-    if (VALUE_CONSUMING_FLAGS.test(eqFlag)) return null;
-  }
-
-  const firstPositional = tokens.find((t) => !t.startsWith("-"));
-  return firstPositional ?? null;
-}
-
-/**
- * Extract the GitHub owner from a remote URL.
- * Supports:
- *   https://github.com/<owner>/<repo>
- *   git@github.com:<owner>/<repo>
- * Returns null for non-GitHub URLs.
- */
-export function extractGitHubOwner(url: string): string | null {
-  // HTTPS format
-  const httpsMatch = url.match(/^https:\/\/github\.com\/([^/]+)\//);
-  if (httpsMatch) return httpsMatch[1];
-
-  // SSH format
-  const sshMatch = url.match(/^git@github\.com:([^/]+)\//);
-  if (sshMatch) return sshMatch[1];
-
-  return null;
-}
-
-// --- Contextual GitHub command helpers (exported for testing) ---
-
-export interface RepoTarget {
-  owner: string;
-  repo: string;
-}
-
-const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+$/;
-
-const GH_API_RE = /^gh\s+api\s+/;
-
-/**
- * Extract the target owner/repo from a `gh api repos/<owner>/<repo>/...` command.
- * Returns null if:
- *   - the command is not a `gh api` call
- *   - the API path doesn't start with [/]repos/<owner>/<repo>
- *   - the path contains traversal (..), encoding (%), or double slashes (//)
- *   - owner or repo contain characters outside [a-zA-Z0-9._-]
- */
-// Flags for `gh api` that consume the next token as a value.
-// Their values must be skipped when scanning for the API path positional arg.
-const GH_API_VALUE_FLAGS =
-  /^(-X|--method|-H|--header|-F|-f|--field|--raw-field|--input|--template|--jq|-q|-p|--preview|--hostname|--cache)$/;
-
-export function parseGhApiTarget(command: string): RepoTarget | null {
-  if (!GH_API_RE.test(command)) return null;
-
-  // Extract tokens after "gh api" and find the API path positional arg.
-  // Skip flags and their consumed values to avoid false matches on
-  // flag values like `--input repos/OWNER/REPO/file`.
-  const afterGhApi = command.replace(GH_API_RE, "").trim();
-  const tokens = afterGhApi.split(/\s+/);
-
-  let pathToken: string | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (GH_API_VALUE_FLAGS.test(t)) {
-      i++; // skip the next token (flag's value)
-      continue;
-    }
-    // Skip --flag=value forms and boolean flags
-    if (t.startsWith("-")) continue;
-    // First positional arg — check if it's a repos/ path
-    if (/^\/?repos\//.test(t)) {
-      pathToken = t;
-    }
-    break; // first positional arg found (whether it matches or not)
-  }
-  if (!pathToken) return null;
-
-  // Validate: no traversal, encoding, or double slashes
-  if (
-    pathToken.includes("..") ||
-    pathToken.includes("%") ||
-    pathToken.includes("//")
-  ) {
-    return null;
-  }
-
-  // Match repos/<owner>/<repo> with optional leading slash
-  const match = pathToken.match(/^\/?repos\/([^/]+)\/([^/]+)/);
-  if (!match) return null;
-
-  const [, owner, repo] = match;
-
-  // Validate owner and repo are safe names
-  if (!SAFE_NAME_RE.test(owner) || !SAFE_NAME_RE.test(repo)) return null;
-
-  return { owner, repo };
-}
-
-const GH_CMD_RE = /^gh\s+(?!api\b)/;
-
-/**
- * Extract the target owner/repo from a `gh` command's --repo or -R flag.
- * Only applies to non-api gh commands (gh pr, gh issue, etc.).
- * Returns null if:
- *   - the command is not a non-api gh command
- *   - no --repo or -R flag is found
- *   - the value doesn't contain owner/repo format
- *   - owner or repo contain characters outside [a-zA-Z0-9._-]
- */
-export function parseGhRepoFlag(command: string): RepoTarget | null {
-  if (!GH_CMD_RE.test(command)) return null;
-
-  // Match --repo owner/repo or --repo=owner/repo
-  const repoFlagMatch = command.match(
-    /(?:(?:^|\s)--repo(?:=|\s+)|(?:^|\s)-R\s+)([^\s]+)/,
-  );
-  if (!repoFlagMatch) return null;
-
-  const value = repoFlagMatch[1];
-  const slashIdx = value.indexOf("/");
-  if (slashIdx === -1) return null;
-
-  const owner = value.slice(0, slashIdx);
-  const repo = value.slice(slashIdx + 1);
-
-  if (!owner || !repo) return null;
-  if (!SAFE_NAME_RE.test(owner) || !SAFE_NAME_RE.test(repo)) return null;
-
-  return { owner, repo };
-}
-
-const GH_REPO_SYNC_RE = /^gh\s+repo\s+sync\b/;
-const GH_REPO_SYNC_VALUE_FLAGS = /^(--source|--branch|-b)$/;
-
-export interface GhRepoSyncResult {
-  target: RepoTarget | null;
-  source: RepoTarget | null;
-}
-
-export function parseGhRepoSyncTarget(
-  command: string,
-): GhRepoSyncResult | null {
-  if (!GH_REPO_SYNC_RE.test(command)) return null;
-
-  const afterSync = command.replace(/^gh\s+repo\s+sync\b/, "").trim();
-  if (!afterSync) return { target: null, source: null };
-  const tokens = afterSync.split(/\s+/);
-
-  let target: RepoTarget | null = null;
-  let source: RepoTarget | null = null;
-
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
-
-    // Handle --source=<value> equals form
-    if (t.startsWith("--source=")) {
-      const value = t.slice("--source=".length);
-      if (value) {
-        const slashIdx = value.indexOf("/");
-        if (slashIdx !== -1) {
-          const owner = value.slice(0, slashIdx);
-          const repo = value.slice(slashIdx + 1);
-          if (
-            owner &&
-            repo &&
-            SAFE_NAME_RE.test(owner) &&
-            SAFE_NAME_RE.test(repo)
-          ) {
-            source = { owner, repo };
-          }
-        }
+  // 6d. Structural escalation rules
+  if (ruleResult.decision === "escalate") {
+    // 6e. Contextual gh exemption
+    if (segment.program === "gh") {
+      const ghResult = await checkGhExemption(segment);
+      if (ghResult === "allow") {
+        return { decision: "allow", reason: "related repo gh command" };
       }
-      continue;
-    }
-
-    // Handle --branch=<value> and -b=<value> equals forms — skip them
-    if (t.startsWith("--branch=") || t.startsWith("-b=")) {
-      continue;
-    }
-
-    if (GH_REPO_SYNC_VALUE_FLAGS.test(t)) {
-      const value = tokens[++i];
-      if (t === "--source" && value) {
-        const slashIdx = value.indexOf("/");
-        if (slashIdx !== -1) {
-          const owner = value.slice(0, slashIdx);
-          const repo = value.slice(slashIdx + 1);
-          if (
-            owner &&
-            repo &&
-            SAFE_NAME_RE.test(owner) &&
-            SAFE_NAME_RE.test(repo)
-          ) {
-            source = { owner, repo };
-          }
-        }
+      if (ghResult === "deny") {
+        return { decision: "deny", reason: "missing remote snapshot" };
       }
-      continue;
+      // ghResult === "escalate" → fall through to Haiku
     }
-    if (t.startsWith("-")) continue;
-    if (!target) {
-      const slashIdx = t.indexOf("/");
-      if (slashIdx !== -1) {
-        const owner = t.slice(0, slashIdx);
-        const repo = t.slice(slashIdx + 1);
-        if (
-          owner &&
-          repo &&
-          SAFE_NAME_RE.test(owner) &&
-          SAFE_NAME_RE.test(repo)
-        ) {
-          target = { owner, repo };
+
+    // 6f. Haiku classification
+    const verdict = await classifyWithHaiku(rawLine);
+    if (verdict.verdict === "block")
+      return { decision: "deny", reason: verdict.reason };
+    if (verdict.verdict === "approve")
+      return { decision: "ask", reason: verdict.reason };
+    return { decision: "allow", reason: verdict.reason };
+  }
+
+  // 6g. Default allow
+  return { decision: "allow", reason: "no rule matched" };
+}
+
+/**
+ * Main pipeline: evaluate a command through all 7 layers.
+ */
+async function evaluateCommand(raw: string): Promise<SegmentResult> {
+  // Layer 1+2: normalize and split
+  const splitResult = normalizeAndSplit(raw);
+  if (splitResult.decision === "deny") {
+    return { decision: "deny", reason: splitResult.reason };
+  }
+
+  if (!("lines" in splitResult)) {
+    return { decision: "allow", reason: "empty command" };
+  }
+
+  let worstDecision: Decision = "allow";
+  let worstReason = "no rule matched";
+
+  for (const line of splitResult.lines) {
+    // Layer 3: raw string pre-scan
+    const prescanResult = prescanLine(line);
+    if (prescanResult.decision === "deny") {
+      return { decision: "deny", reason: prescanResult.reason };
+    }
+
+    let lineDecision: Decision = "allow";
+    let lineReason = "";
+
+    if (prescanResult.decision === "escalate") {
+      // Escalate the whole line to Haiku
+      const verdict = await classifyWithHaiku(line);
+      if (verdict.verdict === "block") {
+        return { decision: "deny", reason: verdict.reason };
+      }
+      lineDecision = verdict.verdict === "approve" ? "ask" : "allow";
+      lineReason = verdict.reason;
+    } else {
+      // Layer 4: tokenize
+      const tokens = tokenize(line);
+
+      // Layer 5: segment split
+      const segments = splitSegments(tokens);
+
+      // Layer 6: per-segment evaluation
+      for (const seg of segments) {
+        const result = await evaluateSegment(
+          seg.tokens,
+          seg.isPipeTarget,
+          line,
+        );
+
+        // Layer 7: aggregate — most restrictive wins
+        if (result.decision === "deny") {
+          return result; // Immediate short-circuit
+        }
+        if (result.decision === "ask") {
+          lineDecision = "ask";
+          lineReason = result.reason;
         }
       }
     }
-  }
 
-  return { target, source };
-}
-
-const METHOD_RE = /(?:-X\s*|--method[\s=])([A-Za-z]+)/gi;
-const ALLOWED_METHODS = new Set(["GET", "POST", "PATCH"]);
-
-/**
- * Check if a gh command uses a non-allowed HTTP method.
- * Allowlist: GET, POST, PATCH. No explicit method flag → treated as GET (allowed).
- * Any other explicit method (DELETE, PUT, OPTIONS, HEAD, TRACE, etc.) → blocked.
- * Checks ALL method flags in the command — if any is outside the allowlist, blocked.
- * Case-insensitive. Handles -X, -XDELETE, --method, and --method=DELETE forms.
- */
-export function hasBlockedMethod(command: string): boolean {
-  const matches = [...command.matchAll(METHOD_RE)];
-  if (matches.length === 0) return false; // no explicit method → GET (allowed)
-  return matches.some((m) => !ALLOWED_METHODS.has(m[1].toUpperCase()));
-}
-
-const COMPOUND_OPERATORS_RE = /[;&|`\n$()<>]/;
-const SINGLE_QUOTE_PAIR_RE = /'[^']*'/g;
-
-/**
- * Check if a command contains compound operators or shell metacharacters.
- * Commands with these are never contextually exempted — they fall through
- * to normal tier evaluation (Haiku).
- *
- * Single-quoted string contents are stripped before scanning because bash
- * single quotes are fully literal — no interpolation, no escaping. Content
- * inside '...' can never be a shell operator.
- *
- * Safety checks before stripping:
- * - Odd quote count (unmatched) → fail-closed to Haiku
- * - Token-embedded quotes → fail-closed. Before opening quote: only whitespace
- *   or = allowed (for --flag='value' forms). After closing quote: only whitespace
- *   or end-of-string allowed. Prevents repo-targeting bypass where
- *   repos/good'x'/repo strips to repos/good/repo but bash executes goodx/repo
- *
- * Double quotes are NOT stripped — they allow interpolation ($(), backticks),
- * so metacharacters inside double quotes remain legitimately dangerous.
- */
-export function hasCompoundOperators(command: string): boolean {
-  // Fail-safe: odd number of single quotes means unmatched — send to Haiku
-  const quoteCount = (command.match(/'/g) || []).length;
-  if (quoteCount % 2 !== 0) return true;
-
-  // Adjacency check: reject if any quoted string is embedded in a token.
-  // Standalone args like --jq '.id' have whitespace or = before the opening
-  // quote and whitespace or end-of-string after the closing quote.
-  // Token-embedded quotes like repos/good'x'/repo have non-whitespace adjacent.
-  for (const match of command.matchAll(SINGLE_QUOTE_PAIR_RE)) {
-    const start = match.index!;
-    const end = start + match[0].length;
-    // Check character before opening quote
-    if (start > 0) {
-      const before = command[start - 1];
-      if (before !== " " && before !== "\t" && before !== "=") return true;
-    }
-    // Check character after closing quote
-    if (end < command.length) {
-      const after = command[end];
-      if (after !== " " && after !== "\t") return true;
+    // Cross-line aggregation
+    if (lineDecision === "ask" && worstDecision === "allow") {
+      worstDecision = "ask";
+      worstReason = lineReason;
     }
   }
 
-  // Strip single-quoted content, then scan remainder for compound operators
-  const stripped = command.replace(SINGLE_QUOTE_PAIR_RE, "");
-  return COMPOUND_OPERATORS_RE.test(stripped);
+  return { decision: worstDecision, reason: worstReason };
 }
 
-/**
- * Safe trailing-pipe filter commands. Read-only, non-interactive utilities
- * that only consume stdin in a pipeline. Commands that can read files
- * from arguments (like `cat`) are excluded — even though `| cat` with
- * no args is a harmless passthrough, allowing it opens a bypass via
- * `| cat secrets.txt` with relative paths that evade the path check.
- *
- * Tier 2 hot words on the full command also catch known credential file
- * names (.npmrc, hosts.yml, .ghtoken) as a compensating control.
- */
-const SAFE_PIPE_FILTERS = new Set(["head", "tail", "jq", "wc", "grep"]);
+// --- Main entry point ---
 
-/**
- * Characters that are shell metacharacters in paths. Used to validate
- * the cd prefix path contains no injection vectors.
- */
-const PATH_METACHAR_RE = /[;&|`\n$()<>"'*?[\]{}!#~]/;
-
-/**
- * Find the index of the last `|` character that is not inside single quotes.
- * Returns -1 if no unquoted pipe is found.
- */
-function findLastUnquotedPipe(cmd: string): number {
-  let inSingleQuote = false;
-  let lastPipe = -1;
-  for (let i = 0; i < cmd.length; i++) {
-    if (cmd[i] === "'" && !inSingleQuote) {
-      inSingleQuote = true;
-    } else if (cmd[i] === "'" && inSingleQuote) {
-      inSingleQuote = false;
-    } else if (cmd[i] === "|" && !inSingleQuote) {
-      lastPipe = i;
-    }
-  }
-  return lastPipe;
-}
-
-/**
- * Extract the core command from a compound command by stripping known-safe
- * shell wrappers. Returns the original command if no safe wrappers are found.
- *
- * Stripping order:
- * 1. Leading `cd <path> && ` — directory change prefix (path must be clean)
- * 2. Stderr redirection `2>&1` — output merging
- * 3. Trailing `| <safe-filter> [args]` — read-only output filtering (repeated)
- *
- * Any unrecognized construct remains in the returned string, causing
- * hasCompoundOperators to catch it downstream (fail-closed).
- */
-export function extractCoreCommand(command: string): string {
-  let cmd = command;
-
-  // 1. Strip leading `cd <path> && ` prefix
-  const cdMatch = cmd.match(/^cd\s+(\S+)\s+&&\s+/);
-  if (cdMatch) {
-    const path = cdMatch[1];
-    if (!PATH_METACHAR_RE.test(path)) {
-      cmd = cmd.slice(cdMatch[0].length);
-    }
-  }
-
-  // 2. Strip stderr redirection `2>&1`
-  cmd = cmd.replace(/\s*2>&1\s*/g, " ").trim();
-
-  // 3. Strip trailing pipe to safe filter (repeated for chains).
-  //    Find the last UNQUOTED pipe to avoid splitting on `|` inside
-  //    single-quoted arguments (e.g., jq '.items | .id').
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const lastPipe = findLastUnquotedPipe(cmd);
-    if (lastPipe >= 0) {
-      const before = cmd.slice(0, lastPipe);
-      const afterPipe = cmd.slice(lastPipe + 1).trimStart();
-      const spaceIdx = afterPipe.indexOf(" ");
-      const filterCmd =
-        spaceIdx >= 0 ? afterPipe.slice(0, spaceIdx) : afterPipe;
-      const filterArgs = spaceIdx >= 0 ? afterPipe.slice(spaceIdx) : "";
-      // Only strip if:
-      // a) The filter command is in the safe allowlist
-      // b) The filter args contain no further shell operators
-      // c) No args look like file paths (safe filters can read files
-      //    when given filename args, bypassing the stdin-only assumption)
-      const strippedArgs = filterArgs.replace(SINGLE_QUOTE_PAIR_RE, "");
-      // Check for file-path args on the ORIGINAL filterArgs (before
-      // single-quote stripping) so that quoted paths like '/etc/passwd'
-      // are still caught. The `.` prefix requires a following `/` to
-      // distinguish `./config` (path) from `.field` (jq expression).
-      const hasPathArg = /(?:^|\s)["']?(?:[/~]|\.\.?\/)/.test(filterArgs);
-      if (
-        SAFE_PIPE_FILTERS.has(filterCmd) &&
-        !COMPOUND_OPERATORS_RE.test(strippedArgs) &&
-        !hasPathArg
-      ) {
-        cmd = before.trim();
-        changed = true;
-      }
-    }
-  }
-
-  return cmd;
-}
-
-/**
- * Extract owner/repo from a GitHub remote URL.
- * Supports HTTPS and SSH formats. Strips .git suffix.
- * Returns null for non-GitHub URLs.
- */
-export function extractGitHubRepo(url: string): RepoTarget | null {
-  // HTTPS: https://github.com/<owner>/<repo>[.git]
-  const httpsMatch = url.match(
-    /^https:\/\/github\.com\/([^/]+)\/([^/\s]+?)(?:\.git)?\s*$/,
-  );
-  if (httpsMatch) return { owner: httpsMatch[1], repo: httpsMatch[2] };
-
-  // SSH (scp-like): git@github.com:<owner>/<repo>[.git]
-  const sshMatch = url.match(
-    /^git@github\.com:([^/]+)\/([^/\s]+?)(?:\.git)?\s*$/,
-  );
-  if (sshMatch) return { owner: sshMatch[1], repo: sshMatch[2] };
-
-  // SSH (URL): ssh://git@github.com/<owner>/<repo>[.git]
-  const sshUrlMatch = url.match(
-    /^ssh:\/\/git@github\.com\/([^/]+)\/([^/\s]+?)(?:\.git)?\s*$/,
-  );
-  if (sshUrlMatch) return { owner: sshUrlMatch[1], repo: sshUrlMatch[2] };
-
-  return null;
-}
-
-const MAX_REMOTES = 5;
-
-/**
- * Path to the boot-time snapshot of git remote URLs.
- * Created by entrypoint.sh (as root) in a root-owned directory before claude
- * starts. Reading from this snapshot instead of live git state eliminates
- * runtime remote injection via .git/config edits, ~/.gitconfig, GIT_CONFIG_*
- * env vars, or include directives.
- */
-export const REMOTE_URLS_PATH = "/tmp/approval/git-remote-urls.txt";
-
-/**
- * Get owner/repo for all git remotes from the boot-time snapshot.
- * Returns empty array on any error or if more than MAX_REMOTES URLs exist.
- */
-export async function getRelatedRepos(): Promise<RepoTarget[]> {
+async function main() {
   try {
-    const file = Bun.file(REMOTE_URLS_PATH);
-    const content = await file.text();
-    const urls = content.trim().split("\n").filter(Boolean);
+    const input = await new Response(Bun.stdin.stream()).text();
+    const hookInput = JSON.parse(input);
+    const command: string = hookInput.hook_specific_input?.command ?? "";
 
-    if (urls.length === 0 || urls.length > MAX_REMOTES) return [];
-
-    const repos: RepoTarget[] = [];
-    for (const url of urls) {
-      const repo = extractGitHubRepo(url.trim());
-      if (repo) repos.push(repo);
-    }
-    return repos;
-  } catch {
-    return [];
-  }
-}
-
-// NOTE: These hot words must also be present in rules.conf (Tier 2) to trigger
-// Tier 2 escalation in the first place. If a hot word is removed from rules.conf
-// but kept here (or vice versa), the contextual exemption gate will be silently
-// bypassed or this set will have dead entries. Keep both in sync.
-export const ALWAYS_ESCALATE_HOT_WORDS = new Set([
-  "gh pr merge",
-  "gh pr close",
-  "gh issue close",
-]);
-
-/**
- * Check if a gh command targets a repo associated with configured git remotes.
- * Returns true if the command should be exempted from Haiku classification.
- *
- * Fail-safe: returns false on any error (missing git config, unparseable
- * command, no matching remote, blocked method, compound operators).
- */
-export async function isContextualGhCommand(command: string): Promise<boolean> {
-  // Normalize leading whitespace — Tier 2 trims before hot word matching
-  // but the raw command string is passed here, so parsers with ^-anchored
-  // regexes would miss commands with leading spaces.
-  const cmd = command.trimStart();
-
-  // Strip known-safe shell wrappers, then reject remaining compound operators
-  const coreCmd = extractCoreCommand(cmd);
-  if (hasCompoundOperators(coreCmd)) return false;
-
-  // Reject disallowed HTTP methods (anything outside GET/POST/PATCH allowlist).
-  // Only applies to gh api — other subcommands don't use -X/--method flags.
-  if (/^gh\s+api\b/.test(coreCmd) && hasBlockedMethod(coreCmd)) return false;
-
-  // Parse target repo from the command (including gh repo sync)
-  const syncResult = parseGhRepoSyncTarget(coreCmd);
-  const target =
-    parseGhApiTarget(coreCmd) ??
-    parseGhRepoFlag(coreCmd) ??
-    syncResult?.target ??
-    null;
-  if (!target) return false;
-
-  // Resolve related repos from git remotes
-  const relatedRepos = await getRelatedRepos();
-  if (relatedRepos.length === 0) return false;
-
-  const isRelated = (repo: RepoTarget) =>
-    relatedRepos.some(
-      (r) =>
-        r.owner.toLowerCase() === repo.owner.toLowerCase() &&
-        r.repo.toLowerCase() === repo.repo.toLowerCase(),
-    );
-
-  // Check if target matches any related repo (case-insensitive)
-  if (!isRelated(target)) return false;
-
-  // For gh repo sync, require --source and validate it is related.
-  // Bare `gh repo sync` (no --source) lets GitHub infer the source,
-  // which we can't validate against the snapshot — send to Haiku.
-  if (syncResult) {
-    if (!syncResult.source) return false;
-    if (!isRelated(syncResult.source)) return false;
-  }
-
-  return true;
-}
-
-const HAS_DELETE_FLAG = /\s--delete\b|\s-[a-zA-Z]*d/;
-
-/**
- * Check if a git push command targets a remote owned by GIT_USER_NAME.
- * Returns true if the push should be exempted from block rules.
- *
- * Fail-safe: returns false on any error (missing git config, git failure,
- * unparseable URL, non-GitHub host, --delete flag present).
- */
-export async function isOwnedRemotePush(command: string): Promise<boolean> {
-  const remote = parseRemoteFromPushCommand(command);
-  if (remote === null) return false;
-
-  // --delete pushes are never exempted, even to owned remotes
-  if (HAS_DELETE_FLAG.test(command)) return false;
-
-  try {
-    // Read identity from git config (set during entrypoint from GIT_USER_NAME).
-    // We don't use process.env.GIT_USER_NAME because the env var may not be
-    // available to the approval process at runtime.
-    const configProc = Bun.spawn(["git", "config", "user.name"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    const [configStdout, , configExitCode] = await Promise.all([
-      new Response(configProc.stdout).text(),
-      new Response(configProc.stderr).text(),
-      configProc.exited,
-    ]);
-
-    if (configExitCode !== 0) return false;
-
-    const gitUserName = configStdout.trim();
-    if (!gitUserName) return false;
-
-    // SECURITY: --push returns the URL git actually uses for push operations.
-    // If pushurl is configured, --push returns pushurl (not url).
-    // This ensures we check ownership against the same URL git will push to,
-    // preventing attacks where url and pushurl are set to different owners.
-    const proc = Bun.spawn(["git", "remote", "get-url", "--push", remote], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    const [stdout, , exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-
-    if (exitCode !== 0) return false;
-
-    const owner = extractGitHubOwner(stdout.trim());
-    if (!owner) return false;
-
-    return owner.toLowerCase() === gitUserName.toLowerCase();
-  } catch {
-    return false;
-  }
-}
-
-// --- Main entry point (only runs when executed directly) ---
-
-const isMainModule = import.meta.main === true;
-
-if (isMainModule) {
-  (async () => {
-    try {
-      const RULES_FILE = process.env.RULES_FILE ?? "/opt/approval/rules.conf";
-
-      // Read hook input from stdin
-      const input = JSON.parse(await Bun.stdin.text());
-      if (input.tool_name !== "Bash") process.exit(0);
-      const command: string = input.tool_input?.command ?? "";
-      if (!command) process.exit(0);
-
-      console.error(`[HOOK] Evaluating: ${command}`);
-
-      // Pre-tier: check if this is a git push to an owned remote
-      if (await isOwnedRemotePush(command)) {
-        console.error(`[HOOK] ALLOW (owned remote): ${command}`);
-        outputDecision("allow");
-        process.exit(0);
-      }
-
-      const rules = parseRules(readFileSync(RULES_FILE, "utf-8"));
-      const tierResult = evaluateTiers(command, rules);
-
-      switch (tierResult.decision) {
-        case "deny":
-          console.error(
-            `[HOOK] BLOCK (${tierResult.rule}): ${tierResult.reason}`,
-          );
-          outputDecision(
-            "deny",
-            `Blocked: ${command}. Do NOT attempt to work around this.`,
-          );
-          process.exit(0);
-
-        case "allow":
-          console.error(`[HOOK] ALLOW (no hot words): ${command}`);
-          outputDecision("allow");
-          process.exit(0);
-
-        case "escalate":
-          console.error(
-            `[HOOK] Hot word "${tierResult.hotWord}" -> escalating to Haiku`,
-          );
-          // Pre-Haiku: check if this is a contextual gh command.
-          // Only apply when the hot word is gh-related — credential hot words
-          // (GH_PAT, CLAUDE_CODE_OAUTH_TOKEN, etc.) must always reach Haiku.
-          // Compute extraction tag before the async check. extractCoreCommand
-          // is also called inside isContextualGhCommand — this intentional
-          // duplication keeps the tag computation independent of the callee's
-          // internals. The function is pure, synchronous, and O(n) on short
-          // strings, so the cost is negligible.
-          const extracted = extractCoreCommand(command.trimStart());
-          const coreExtracted = extracted !== command.trimStart();
-          if (
-            tierResult.hotWord.startsWith("gh ") &&
-            !ALWAYS_ESCALATE_HOT_WORDS.has(tierResult.hotWord) &&
-            (await isContextualGhCommand(command))
-          ) {
-            const tag = coreExtracted
-              ? "contextual gh command, core-extracted"
-              : "contextual gh command";
-            console.error(`[HOOK] ALLOW (${tag}): ${command}`);
-            outputDecision("allow");
-            process.exit(0);
-          }
-          break; // fall through to Tier 3
-      }
-
-      // Tier 3: Haiku classification
-      const verdict = await classifyWithHaiku(command);
-      console.error(`[HOOK] Haiku verdict: ${JSON.stringify(verdict)}`);
-
-      switch (verdict.verdict) {
-        case "allow":
-          console.error(`[HOOK] HAIKU ALLOW: ${verdict.reason}`);
-          outputDecision("allow");
-          break;
-        case "block":
-          console.error(`[HOOK] HAIKU BLOCK: ${verdict.reason}`);
-          outputDecision(
-            "deny",
-            `${verdict.reason}. Do NOT attempt to work around this.`,
-          );
-          break;
-        case "approve":
-          console.error(`[HOOK] HAIKU ASK: ${verdict.reason}`);
-          outputDecision("ask", verdict.reason);
-          break;
-      }
-    } catch (err) {
-      // Fail closed: any unhandled error → deny
-      console.error(`[HOOK] FATAL ERROR: ${err}`);
-      outputDecision(
-        "deny",
-        "Command approval system error. Please contact the operator.",
-      );
+    if (!command) {
+      outputDecision("allow", "empty command");
+      return;
     }
 
-    process.exit(0);
-  })();
+    console.error(`[HOOK] evaluating: ${command.slice(0, 200)}`);
+
+    const result = await evaluateCommand(command);
+
+    console.error(`[HOOK] decision=${result.decision} reason=${result.reason}`);
+
+    outputDecision(result.decision, result.reason);
+  } catch (error) {
+    console.error(`[HOOK] error: ${error}`);
+    outputDecision("deny", "pipeline error");
+  }
 }
+
+main();
