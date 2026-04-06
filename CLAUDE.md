@@ -151,6 +151,8 @@ All commit messages follow the conventional commits standard:
 
 Run `bunx prettier --write "**/*.{ts,md}"` on all TypeScript and Markdown files before committing. Run `bunx prettier --check "**/*.{ts,md}"` to verify.
 
+When dispatching subagents that modify TypeScript or Markdown files, include an explicit `bunx prettier --check "**/*.{ts,md}"` step in the task description. The check must cover all modified files — not just the primary target — and run after implementation, before the subagent reports completion.
+
 ---
 
 ## Accepted Risks
