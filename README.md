@@ -368,7 +368,7 @@ No new binaries, no collector sidecar, no Dockerfile changes. Claude Code's buil
 - **tmpfs mounts**: Writable areas are memory-backed and size-limited:
   - `/workspace` (512MB) — working directory for code
   - `/home/claude` (1GB) — Claude's home directory
-  - `/tmp` (128MB) — temporary files
+  - `/tmp` (512MB) — temporary files
 - **Settings file**: Claude Code's `settings.json` (which configures the approval hook) is owned by the `claude` user. Claude can delete and recreate it, which would remove the hook. This is an accepted risk — iptables is the real enforcement layer, and the hook provides defense-in-depth.
 
 ### Layer 2: Network Isolation

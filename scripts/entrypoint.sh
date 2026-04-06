@@ -16,7 +16,7 @@ fi
 # === 1. Filesystem hardening ===
 # Mount tmpfs at writable paths before anything else
 mount -t tmpfs -o size=512m tmpfs /workspace
-mount -t tmpfs -o size=128m tmpfs /tmp
+mount -t tmpfs -o size=512m tmpfs /tmp
 mount -t tmpfs -o size=1024m tmpfs /home/claude
 chmod 1777 /tmp
 
