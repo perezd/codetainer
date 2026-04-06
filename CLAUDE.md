@@ -84,7 +84,7 @@ The panel is not a rubber stamp. Genuinely reason from each expert's perspective
 
 Before beginning any task, complete these initialization steps in order:
 
-1. **Sync with upstream** — First, switch to `main` (`git switch main`). If switching fails (e.g., `main` is checked out in another worktree), do not run `git pull` from the current branch — use `git fetch origin main` instead and proceed. Once on `main`, run `gh repo view --json isFork,parent` to check if the repo is a fork. If it is a fork, sync main with upstream: `gh repo sync <fork-owner>/<fork-repo> --source <parent-owner>/<parent-repo> --branch main`, then `git pull origin main`. Lastly, ensure the fork's origin main branch is pushed and synced with the upstream main branch at GitHub. If the repo is not a fork, run `git pull origin main` to ensure the local checkout is current with its remote. If any step fails, warn the user and proceed — do not block the task.
+1. **Sync with upstream** — First, switch to `main` (`git switch main`). If switching fails (e.g., `main` is checked out in another worktree), do not run `git pull` from the current branch — use `git fetch origin main` instead and proceed. Once on `main`, detect whether the repo is a fork: extract the origin remote's `owner/repo` from `git remote get-url origin`, then run `gh repo view <origin-owner/repo> --json isFork,parent` (the repo must be specified explicitly — without it, `gh` resolves forks to the parent repo and `isFork` is always `false`). If it is a fork, sync main with upstream: `gh repo sync <fork-owner>/<fork-repo> --source <parent-owner>/<parent-repo> --branch main`, then `git pull origin main`. Lastly, ensure the fork's origin main branch is pushed and synced with the upstream main branch at GitHub. If the repo is not a fork, run `git pull origin main` to ensure the local checkout is current with its remote. If any step fails, warn the user and proceed — do not block the task.
 
 All work — whether writing code, answering questions, or reviewing files — should be based on the latest upstream state. This is a best-effort step that runs from the main branch before any worktree is created.
 
@@ -111,7 +111,7 @@ Every change goes through a pull request — no direct commits to main. PR descr
 
 Before creating a PR, detect whether the repo is a fork with an upstream parent:
 
-1. Run `gh repo view --json isFork,parent` to check.
+1. Extract the origin remote's `owner/repo` from `git remote get-url origin`, then run `gh repo view <origin-owner/repo> --json isFork,parent` to check. The repo must be specified explicitly — without it, `gh` resolves forks to the parent repo and `isFork` is always `false`.
 2. If the repo **is a fork** (i.e., `isFork` is true and `parent` exists), target the upstream parent repo. Use `gh pr create --repo <parent-owner>/<parent-repo>` so the PR is sent upstream.
 3. If the repo **is not a fork**, create the PR against the local remote origin as usual.
 
@@ -150,6 +150,8 @@ All commit messages follow the conventional commits standard:
 ### Formatting
 
 Run `bunx prettier --write "**/*.{ts,md}"` on all TypeScript and Markdown files before committing. Run `bunx prettier --check "**/*.{ts,md}"` to verify.
+
+When dispatching subagents that modify TypeScript or Markdown files, include an explicit `bunx prettier --check "**/*.{ts,md}"` step in the task description. The check must cover all modified files — not just the primary target — and run after implementation, before the subagent reports completion.
 
 ---
 
