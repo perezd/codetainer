@@ -6,7 +6,7 @@
 
 set +e
 
-SNAPSHOT="/tmp/approval/git-remote-urls.txt"
+SNAPSHOT="/tmp/git-remote-urls.txt"
 REPO_DIR="/workspace/repo"
 GITHUB_RE='^https://github\.com/([^/]+/[^/]+)(\.git)?$'
 

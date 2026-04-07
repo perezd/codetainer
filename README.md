@@ -1,6 +1,6 @@
 # Claudetainer
 
-A hardened Docker container that runs [Claude Code](https://claude.ai/code) on [Fly.io](https://fly.io), accessible via SSH. Designed for long-running, autonomous coding sessions with three layers of security: container hardening, strict network isolation, and a command classifier/approval gate system for dangerous commands.
+A hardened Docker container that runs [Claude Code](https://claude.ai/code) on [Fly.io](https://fly.io), accessible via SSH. Designed for long-running, autonomous coding sessions with container hardening and strict network isolation.
 
 > Quick note, this project is intended for me and my colleagues. If you find this useful, I recommend you fork it and make it your own. I'm not interested in making this general purpose. Think of this repo as "source available." If you spot a bug, of course I'd love to hear about that. Otherwise, have fun with it and make it your own.
 
@@ -125,7 +125,7 @@ Claude will begin working on the prompt as soon as the container is ready, befor
 
 **Option B: Build from Dockerfile (customizable)**
 
-If you want to customize the image (e.g. change installed tools, approval rules, or network allowlists), clone the repo and build directly:
+If you want to customize the image (e.g. change installed tools or network allowlists), clone the repo and build directly:
 
 ```bash
 git clone https://github.com/perezd/claudetainer.git
@@ -232,7 +232,7 @@ These are set via `--env` flags on `fly machine run`. They are not sensitive and
 
 | Variable                   | Required | Default                           | Description                                                                                                                                                                                                                                         |
 | -------------------------- | -------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GIT_USER_NAME`            | No       | `claudetainer`                    | Git commit author name. **Must match the GitHub username/login** (not a display name) for the git push ownership exemption to work.                                                                                                                 |
+| `GIT_USER_NAME`            | No       | `claudetainer`                    | Git commit author name                                                                                                                                                                                                                              |
 | `GIT_USER_EMAIL`           | No       | `claudetainer@noreply.github.com` | Git commit author email                                                                                                                                                                                                                             |
 | `REPO_URL`                 | No       | _(none)_                          | HTTPS URL of a GitHub repo to clone on startup. Cloned to `/workspace/repo`. Must be accessible with the `GH_PAT`.                                                                                                                                  |
 | `CLAUDE_PROMPT`            | No       | _(none)_                          | Initialization prompt for Claude Code. When set, Claude immediately begins working on this prompt at boot. Typically a GitHub issue URL (e.g., `https://github.com/org/repo/issues/42`). Visible via `fly machine status` — do not include secrets. |
@@ -259,18 +259,6 @@ The session has two panes:
 - **Bottom (20%)**: A bash shell in the working directory
 
 Switch panes with `Ctrl-b ↓` / `Ctrl-b ↑` or click with the mouse.
-
-### Approving Commands
-
-Claude Code runs with `--dangerously-skip-permissions` but has a PreToolUse hook that enforces a three-tier command classification pipeline:
-
-- **Tier 1 — Hard-block** (instant): Dangerous commands that are never allowed (sudo, eval, rm -rf /, git push --force, credential leaks, etc.). **Exception:** `git push` to a remote owned by `GIT_USER_NAME` (your fork) is allowed, including force push and push to main — but `--delete` remains blocked. `GIT_USER_NAME` must match the GitHub owner in the remote URL. Compound commands containing `git push` are not exempted and fall through to normal block rules.
-- **Tier 2 — Hot-word scan** (instant): If the command contains a risky keyword (curl, bun add, pip install, etc.), escalate to Tier 3. Otherwise, allow.
-- **Tier 3 — Haiku classification** (1-3s): A Haiku LLM classifies the command as allow, block, or approve. For approve, Claude Code's native permission prompt is shown to the user.
-
-When Claude tries to run a command that requires approval, Claude Code shows its built-in permission dialog. You can approve or deny directly in the CLI — no external commands needed.
-
-**Fly.io commands:** Simple read-only fly commands (`fly status`, `fly logs`, `fly releases`) pass through without Haiku review. Commands involving infrastructure subcommands (`fly apps`, `fly machine`, `fly scale`, etc.) are escalated to Haiku, which classifies read-only operations (e.g., `fly apps list`) as allow and mutating operations (e.g., `fly deploy`) as approve. `fly auth`, `fly tokens`, `fly ssh`, `fly proxy`, `fly sftp`, and `fly console` are hard-blocked — authenticate via `! fly auth login` in the terminal pane.
 
 ### Status and Diagnostics
 
@@ -369,7 +357,7 @@ No new binaries, no collector sidecar, no Dockerfile changes. Claude Code's buil
   - `/workspace` (512MB) — working directory for code
   - `/home/claude` (1GB) — Claude's home directory
   - `/tmp` (512MB) — temporary files
-- **Settings file**: Claude Code's `settings.json` (which configures the approval hook) is owned by the `claude` user. Claude can delete and recreate it, which would remove the hook. This is an accepted risk — iptables is the real enforcement layer, and the hook provides defense-in-depth.
+- **Settings file**: Claude Code's `settings.json` is owned by the `claude` user for normal operation.
 
 ### Layer 2: Network Isolation
 
@@ -382,25 +370,15 @@ No new binaries, no collector sidecar, no Dockerfile changes. Claude Code's buil
 - **5-minute refresh**: iptables rules are refreshed every 5 minutes to pick up IP changes
 - **IPv6 unrestricted**: Fly SSH requires public IPv6 routing, and Fly's kernel has broken IPv6 conntrack, so IPv6 output is left at ACCEPT. IPv4 iptables is the enforcement layer.
 
-### Layer 3: Command Classification
+### Layer 3: Command Control (Pending)
 
-- **PreToolUse hook**: Every Bash tool invocation passes through a compiled TypeScript classifier
-- **Three-tier pipeline**: Hard-block (regex) → hot-word scan (substring) → Haiku LLM classification (via `claude -p` CLI subprocess)
-- **Default-allow posture**: Commands without hot words are allowed (network layer is primary enforcement)
-- **Native approval UX**: Haiku's "approve" verdict triggers Claude Code's built-in permission prompt — no custom token system
-- **Git push ownership exemption**: Before tier evaluation, `git push` commands are checked against the remote URL. If the GitHub owner in the remote matches `GIT_USER_NAME` (case-insensitive), the push is allowed — enabling the fork-branch-PR workflow. `--delete` pushes remain blocked even on owned remotes. Falls through to normal tier evaluation (no exemption) on any error.
-- **Credential leak prevention**: Direct references to `$GH_PAT` and `$CLAUDE_CODE_OAUTH_TOKEN` are hard-blocked; indirect references (variable names as strings) are escalated to Haiku
-- **Fly.io auth blast radius**: Fly tokens are org-scoped (unlike the fine-grained GH_PAT). An authenticated session grants access to ALL apps in the org. Use short-lived tokens (`fly tokens create --expiry 1h`) or a dedicated Fly org.
+This layer is pending replacement by an external dependency. Previously provided by a built-in three-tier command classification pipeline. The Container Hardening and Network Isolation layers remain fully enforced.
 
 ## Customization
 
 ### Changing the Domain Allowlist
 
 Edit `network/domains.conf` to add or remove allowed domains. One domain per line, `#` comments supported. Rebuild and redeploy the container.
-
-### Changing Command Approval Rules
-
-Edit `approval/rules.conf`. Three rule types: `block:` (word-boundary regex, instant deny), `block-pattern:` (full regex, instant deny), and `hot:` (substring match, escalates to Haiku). If no rule matches, the command is allowed.
 
 ### Changing the Claude Code Model
 
@@ -455,20 +433,6 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 
 ```
 claudetainer/
-├── approval/                    # Command approval pipeline (TypeScript)
-│   ├── __tests__/               # Unit tests (bun test)
-│   │   ├── classifier.test.ts
-│   │   ├── ownership.test.ts
-│   │   ├── rules.test.ts
-│   │   └── tiers.test.ts
-│   ├── check-command.ts         # Entrypoint — PreToolUse hook handler
-│   ├── classifier.ts            # Tier 3 Haiku LLM classifier
-│   ├── hook-output.ts           # Hook response formatting
-│   ├── rules.ts                 # Rule parser (block, block-pattern, hot)
-│   ├── rules.conf               # Block/hot-word rule definitions
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── bun.lock
 ├── network/                     # Network isolation layer
 │   ├── domains.conf             # Domain allowlist (one per line)
 │   └── Corefile.template        # CoreDNS base config (catch-all NXDOMAIN)
@@ -524,9 +488,6 @@ All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Do
 └── entrypoint.sh     # Boot script
 
 /opt/
-├── approval/
-│   ├── check-command        # Compiled classifier binary (bun build --compile)
-│   └── rules.conf           # Block/hot-word rules
 ├── network/
 │   ├── domains.conf         # Domain allowlist
 │   ├── Corefile.template    # CoreDNS base config
@@ -618,16 +579,6 @@ The superpowers plugin is installed on first SSH login. If it fails, check:
 
 - Network connectivity (the container needs to reach github.com)
 - `status` command to see if CoreDNS is running and no unexpected drops
-
-### Command blocked unexpectedly
-
-Check which rule matched by reviewing the hook's stderr logs, or inspect the rules directly:
-
-```bash
-grep -n 'pattern' /opt/approval/rules.conf
-```
-
-If a command is blocked by Tier 1 (hard-block), it cannot be overridden. If it's escalated to Tier 3 (Haiku), the user will see a permission prompt and can approve or deny.
 
 ### UI rendering issues
 

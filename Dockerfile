@@ -100,13 +100,6 @@ RUN chmod +x /usr/local/bin/attach-claude
 # Run attach-claude on SSH login (waits for init, then attaches to tmux)
 RUN echo 'exec /usr/local/bin/attach-claude' >> /root/.bashrc
 
-# Approval system
-COPY approval/ /opt/approval/
-RUN cd /opt/approval \
-    && bun build --compile --bytecode --outfile check-command check-command.ts \
-    && rm -rf node_modules __tests__ *.ts *.sh tsconfig.json package.json bun.lock \
-    && chmod +x check-command
-
 # gh wrapper (ensures GH_CONFIG_DIR is always set for Claude Code subprocesses)
 COPY scripts/gh-wrapper.sh /usr/local/bin/gh
 RUN chmod +x /usr/local/bin/gh

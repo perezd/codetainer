@@ -4,16 +4,6 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/opt/approval/check-command",
-            "timeout": 30000
-          }
-        ]
-      },
-      {
         "matcher": "EnterWorktree",
         "hooks": [
           {

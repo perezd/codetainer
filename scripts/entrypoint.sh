@@ -152,7 +152,7 @@ chmod 711 /opt/gh-config
 
 # Sudoers: allow claude to read the token file via the gh-wrapper's fallback mechanism.
 # This is the ONLY sudo privilege granted to the claude user.
-# The command approval system's Tier 1 block on \bsudo\b prevents direct invocation.
+# Network isolation limits where the token can be used.
 echo 'claude ALL=(root) NOPASSWD: /usr/bin/cat /opt/gh-config/.ghtoken' > /etc/sudoers.d/gh-token
 chmod 440 /etc/sudoers.d/gh-token
 chown root:root /etc/sudoers.d/gh-token
@@ -209,7 +209,6 @@ fi
 # === 4. Claude Code setup ===
 
 # Copy settings template — claude can delete and recreate this file
-# (accepted risk: iptables is the real enforcement, hooks are defense-in-depth)
 cp /opt/claude/settings.json /home/claude/.claude/settings.json
 chown claude:claude /home/claude/.claude/settings.json
 
@@ -257,32 +256,28 @@ if [[ -d /workspace/repo/.git ]]; then
   ) || true
 fi
 
-# Snapshot git remote URLs for the approval pipeline's contextual exemption.
+# Snapshot git remote URLs for fork detection and sync.
 # Runs as root while the repo is still root-owned (before chown to claude),
 # avoiding git's safe.directory check. The snapshot is stored in a root-owned
-# directory that claude cannot modify, eliminating runtime remote injection
+# location that claude cannot modify, eliminating runtime remote injection
 # via .git/config edits, ~/.gitconfig, GIT_CONFIG_* env vars, or include
 # directives. URLs are sanitized to strip any embedded credentials (userinfo)
 # before writing, since the snapshot file is world-readable (mode 444).
 if [[ -d /workspace/repo/.git ]]; then
   (
-    # Fail-open: snapshot errors must not abort the entrypoint. The approval
-    # layer handles a missing snapshot gracefully (contextual exemption simply
-    # won't activate, falling through to Haiku classification).
+    # Fail-open: snapshot errors must not abort the entrypoint.
     set +e
-    mkdir -p /tmp/approval
-    tmp_snapshot="/tmp/approval/git-remote-urls.txt.$$"
+    tmp_snapshot="/tmp/git-remote-urls.txt.$$"
     git -C /workspace/repo remote | while read -r name; do
       git -C /workspace/repo remote get-url "$name" 2>/dev/null
     done | sed -E 's#(https?://)[^/@]*@#\1#g' > "$tmp_snapshot"
     if [[ $? -ne 0 ]]; then
-      rm -f "$tmp_snapshot" /tmp/approval/git-remote-urls.txt
+      rm -f "$tmp_snapshot" /tmp/git-remote-urls.txt
       echo "[ENTRYPOINT] WARNING: Failed to snapshot git remotes; continuing without snapshot" >&2
     else
-      mv -f "$tmp_snapshot" /tmp/approval/git-remote-urls.txt
-      chmod 444 /tmp/approval/git-remote-urls.txt
-      chmod 555 /tmp/approval
-      echo "[ENTRYPOINT] Git remote snapshot created at /tmp/approval/git-remote-urls.txt"
+      mv -f "$tmp_snapshot" /tmp/git-remote-urls.txt
+      chmod 444 /tmp/git-remote-urls.txt
+      echo "[ENTRYPOINT] Git remote snapshot created at /tmp/git-remote-urls.txt"
     fi
   ) || true
 fi

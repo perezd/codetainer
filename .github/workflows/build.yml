@@ -14,23 +14,7 @@ on:
       - 'fly/**'
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: cd approval && bun install
-
-      - name: Run approval tests
-        run: cd approval && bun test
-
   build:
-    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

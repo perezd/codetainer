@@ -4,15 +4,15 @@
 
 This project enforces a three-layer security model. You must evaluate every change against all three layers.
 
-| Layer                   | Defense                                                                                                                                 | Protects Against                                                                      | Key Files                                                                          |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Container Hardening** | Non-root user (UID 1000), read-only rootfs, size-limited tmpfs (512MB /workspace, 1GB /home/claude, 512MB /tmp)                         | Privilege escalation, persistent compromise, disk-based DoS                           | `Dockerfile`, `scripts/entrypoint.sh`                                              |
-| **Network Isolation**   | Default-deny iptables (OUTPUT DROP), domain allowlist, CoreDNS NXDOMAIN for unlisted domains, metadata IP blocks, UDP drop (except DNS) | Data exfiltration, C2 communication, unauthorized API access, metadata endpoint abuse | `network/domains.conf`, `network/Corefile.template`, `network/refresh-iptables.sh` |
-| **Command Approval**    | Tier 1 regex hard-block, Tier 2 hot-word escalation, Tier 3 Haiku LLM classification                                                    | Dangerous command execution, credential leaks, lateral movement, tmux injection       | `approval/rules.conf`, `approval/check-command.ts`, `approval/classifier.ts`       |
+| Layer                         | Defense                                                                                                                                 | Protects Against                                                                      | Key Files                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Container Hardening**       | Non-root user (UID 1000), read-only rootfs, size-limited tmpfs (512MB /workspace, 1GB /home/claude, 512MB /tmp)                         | Privilege escalation, persistent compromise, disk-based DoS                           | `Dockerfile`, `scripts/entrypoint.sh`                                              |
+| **Network Isolation**         | Default-deny iptables (OUTPUT DROP), domain allowlist, CoreDNS NXDOMAIN for unlisted domains, metadata IP blocks, UDP drop (except DNS) | Data exfiltration, C2 communication, unauthorized API access, metadata endpoint abuse | `network/domains.conf`, `network/Corefile.template`, `network/refresh-iptables.sh` |
+| **Command Control (pending)** | _Pending replacement by external dependency_                                                                                            | Dangerous command execution, credential leaks, lateral movement                       | _TBD_                                                                              |
 
-**Defense-in-depth:** No single layer is sufficient alone. If you weaken one layer, you must add compensating controls in another. Each layer is independently enforceable — network isolation works even if command approval is bypassed, and vice versa.
+**Defense-in-depth:** No single layer is sufficient alone. If you weaken one layer, you must add compensating controls in another. Each layer is independently enforceable.
 
-**Credentials:** `GH_PAT`, `CLAUDE_CODE_OAUTH_TOKEN`, and `FLY_ACCESS_TOKEN` are the high-value secrets. Direct variable references (e.g., `$GH_PAT`) are Tier 1 hard-blocked. Indirect references (variable names in strings) are Tier 2 escalated to Haiku. Never add code paths that leak these to stdout, logs, or network.
+**Credentials:** `GH_PAT`, `CLAUDE_CODE_OAUTH_TOKEN`, and `FLY_ACCESS_TOKEN` are the high-value secrets. Never add code paths that leak these to stdout, logs, or network.
 
 ---
 
@@ -28,7 +28,7 @@ Before every modification, you must explicitly state:
 
 ### Panel Review
 
-A full synthetic panel review is required for: changes to any security-layer file (see key files above), new scripts that run as root, Dockerfile modifications, new binaries or packages, domain allowlist changes, approval rule changes, credential handling changes, and new designs or specifications.
+A full synthetic panel review is required for: changes to any security-layer file (see key files above), new scripts that run as root, Dockerfile modifications, new binaries or packages, domain allowlist changes, credential handling changes, and new designs or specifications.
 
 **Core panel (always present):**
 
@@ -141,7 +141,7 @@ All commit messages follow the conventional commits standard:
 - Format: `type(scope): description`
 - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`
 - Scope references the affected layer or component when relevant:
-  - `feat(approval): add hot word for bunx`
+  - `feat(docker): add new system package`
   - `fix(network): add missing domain to allowlist`
   - `refactor(entrypoint): reorder boot sequence`
   - `docs: update accepted risks registry`
@@ -166,7 +166,6 @@ Unresolvable risks identified by the panel are tracked in `docs/accepted-risks.m
 ### Commands
 
 ```
-cd approval && bun test              # Run approval classifier unit tests
 bunx prettier --check "**/*.{ts,md}" # Check formatting
 bunx prettier --write "**/*.{ts,md}" # Fix formatting
 ```
@@ -175,12 +174,10 @@ Container builds are manual. Never build or push Docker images.
 
 ### Directory Map
 
-- `approval/` — Command approval pipeline (TypeScript, compiled with `bun build --compile`). Tests in `approval/__tests__/`.
 - `network/` — Network isolation (domain allowlist, CoreDNS config, iptables refresh).
 - `scripts/` — Runtime scripts (entrypoint/PID 1, SSH handler, session namer, status line).
 - `Dockerfile` — Multi-stage container build (Debian bookworm-slim).
 - `claude-settings.json` — Claude Code runtime config (model, hooks, plugins, status line).
-- `approval/rules.conf` — Block rules (Tier 1 regex) and hot words (Tier 2 substring).
 
 ### Boot Sequence
 
@@ -210,7 +207,6 @@ This order matters. Filesystem hardening before network setup. Network setup bef
 
 ### Testing
 
-- Approval rule changes must include test cases in `approval/__tests__/`.
 - Network changes must be validated against the domain allowlist.
 - Script changes must work under the read-only rootfs constraint.
 
@@ -281,7 +277,7 @@ PR bodies must include `Closes #N` (or equivalent GitHub closing keyword) so the
 
 ### CLI Best Practices
 
-Never pass arbitrary text content inline on a `gh` command line. Inline `--body` strings, `-F field=value` arguments, and heredoc constructs containing special characters trigger the command approval classifier unnecessarily. The goal is to keep user-authored text out of the command string by any means necessary.
+Never pass arbitrary text content inline on a `gh` command line. Inline `--body` strings, `-F field=value` arguments, and heredoc constructs containing special characters are fragile and error-prone. The goal is to keep user-authored text out of the command string by any means necessary.
 
 **Always:** Write content to a temp file first (using the Write tool), then reference it from the `gh` command in a **separate** Bash invocation. Use whichever mechanism fits the command:
 
