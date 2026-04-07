@@ -209,7 +209,6 @@ fi
 # === 4. Claude Code setup ===
 
 # Copy settings template — claude can delete and recreate this file
-# (accepted risk: iptables is the real enforcement, hooks are defense-in-depth)
 cp /opt/claude/settings.json /home/claude/.claude/settings.json
 chown claude:claude /home/claude/.claude/settings.json
 
