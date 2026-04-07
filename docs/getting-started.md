@@ -6,7 +6,7 @@ Complete guide to setting up and running Codetainer on Fly.io.
 
 - [Fly.io account](https://fly.io) with the `flyctl` CLI installed
 - A **dedicated GitHub robot account** for Claude (e.g. `my-org-claude-bot`). Create a standard GitHub account for this purpose — Claude will commit and open PRs as this identity. Add it as a collaborator to the repo you want Claude to work in.
-- A fine-grained Personal Access Token created on the robot account, scoped to the target repo
+- A [Personal Access Token](configuration.md#gh_pat-required) created on the robot account, scoped to the target repo (fine-grained or classic — see [token setup instructions](configuration.md#gh_pat-required))
 - A Claude Code OAuth token generated via `claude setup-token`
 
 ## 1. Install Fly CLI and authenticate
