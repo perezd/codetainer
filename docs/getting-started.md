@@ -152,11 +152,11 @@ fly machine run ghcr.io/perezd/codetainer:latest \
 ## Stopping the Machine
 
 ```bash
-# Graceful stop
-fly machine stop <machine-id> -a <your-app-name>
-
 # List machines to find the ID
 fly machine list -a <your-app-name>
+
+# Graceful stop
+fly machine stop <machine-id> -a <your-app-name>
 ```
 
 The machine is configured with `--restart no` and `--autostart=false`, so it stays stopped until you explicitly run a new one.
