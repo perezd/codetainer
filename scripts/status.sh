@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Claudetainer Status ==="
+echo "=== Codetainer Status ==="
 echo ""
 
 echo "--- Recent iptables Drops ---"
-dmesg 2>/dev/null | grep "CLAUDETAINER_DROP" | tail -5 || echo "  (none)"
+dmesg 2>/dev/null | grep "CODETAINER_DROP" | tail -5 || echo "  (none)"
 echo ""
 
 echo "--- CoreDNS ---"

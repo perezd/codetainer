@@ -21,7 +21,7 @@ run_as_claude() {
     HOME="$CLAUDE_HOME" \
     PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
     GH_TOKEN="$GH_PAT" \
-    CLAUDETAINER_NPM_TOKEN="$GH_PAT" \
+    CODETAINER_NPM_TOKEN="$GH_PAT" \
     CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
     LANG="$LANG" \
     LC_ALL="$LC_ALL" \
@@ -46,13 +46,13 @@ fi
 exec > >(tee -a "$START_LOG") 2>&1
 
 # --- Wait for readiness ---
-echo "Waiting for claudetainer to be ready..."
+echo "Waiting for codetainer to be ready..."
 for i in $(seq 1 60); do
-  [[ -f /tmp/claudetainer-ready ]] && break
+  [[ -f /tmp/codetainer-ready ]] && break
   sleep 1
 done
 
-if [[ ! -f /tmp/claudetainer-ready ]]; then
+if [[ ! -f /tmp/codetainer-ready ]]; then
   echo "WARNING: Timed out waiting for readiness (60s). Starting anyway."
 fi
 
@@ -143,7 +143,7 @@ sudo -u claude \
   HOME="$CLAUDE_HOME" \
   PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
   GH_TOKEN="$GH_PAT" \
-  CLAUDETAINER_NPM_TOKEN="$GH_PAT" \
+  CODETAINER_NPM_TOKEN="$GH_PAT" \
   CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
   COLORTERM="truecolor" \
   LANG="$LANG" \
@@ -158,7 +158,7 @@ sudo -u claude \
   HOME="$CLAUDE_HOME" \
   PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
   GH_TOKEN="$GH_PAT" \
-  CLAUDETAINER_NPM_TOKEN="$GH_PAT" \
+  CODETAINER_NPM_TOKEN="$GH_PAT" \
   COLORTERM="truecolor" \
   LANG="$LANG" \
   LC_ALL="$LC_ALL" \

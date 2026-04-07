@@ -37,7 +37,7 @@ for i in $(seq 1 60); do
 done
 
 # Wait for entrypoint readiness (boot may still be cloning repo, setting up network, etc.)
-READY_FILE="/tmp/claudetainer-ready"
+READY_FILE="/tmp/codetainer-ready"
 if [[ ! -f "$READY_FILE" ]]; then
   for i in $(seq 1 300); do
     [[ -f "$READY_FILE" ]] && break

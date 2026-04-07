@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[ENTRYPOINT] Starting claudetainer..."
+echo "[ENTRYPOINT] Starting codetainer..."
 
 # === 0. Validate required secrets ===
 missing=()
@@ -131,8 +131,8 @@ echo "nameserver 127.0.0.53" > /etc/resolv.conf
 
 # === 3. Git + GitHub configuration ===
 
-git config --system user.name "${GIT_USER_NAME:-claudetainer}"
-git config --system user.email "${GIT_USER_EMAIL:-claudetainer@noreply.github.com}"
+git config --system user.name "${GIT_USER_NAME:-codetainer}"
+git config --system user.email "${GIT_USER_EMAIL:-codetainer@noreply.github.com}"
 
 # Force HTTPS for all GitHub URLs (container has no SSH client)
 git config --system url."https://github.com/".insteadOf "git@github.com:"
@@ -167,7 +167,7 @@ fi
 # Uses env var substitution — npm/bun expand ${VAR} at runtime from the process environment.
 # The file contains only the variable reference, not the plaintext token.
 cat > /home/claude/.npmrc <<'NPMRC'
-//npm.pkg.github.com/:_authToken=${CLAUDETAINER_NPM_TOKEN}
+//npm.pkg.github.com/:_authToken=${CODETAINER_NPM_TOKEN}
 NPMRC
 chown root:root /home/claude/.npmrc
 chmod 644 /home/claude/.npmrc
@@ -332,11 +332,11 @@ if [[ -n "${REPO_URL:-}" ]] && [[ ! -d /workspace/repo/.git ]]; then
 fi
 
 if [[ "$READY" == "true" ]]; then
-  touch /tmp/claudetainer-ready
+  touch /tmp/codetainer-ready
   echo "[ENTRYPOINT] Ready. All checks passed."
 else
   echo "[ENTRYPOINT] WARN: Some checks failed, starting anyway."
-  touch /tmp/claudetainer-ready
+  touch /tmp/codetainer-ready
 fi
 
 # Start Claude Code initialization in background (synchronized via flock)

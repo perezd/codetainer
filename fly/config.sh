@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shared configuration for fly machine run commands.
 
-APP="claudetainer"
-IMAGE="ghcr.io/perezd/claudetainer:latest"
+APP="codetainer"
+IMAGE="ghcr.io/perezd/codetainer:latest"
 
 COMMON_FLAGS=(
   --app "$APP"

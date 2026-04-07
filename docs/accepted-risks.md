@@ -51,9 +51,9 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 ### Single PAT for GitHub API and npm registry auth
 
 - **Affected layer:** Container Hardening
-- **Description:** Both `GH_TOKEN` (GitHub API / git credential helper) and `CLAUDETAINER_NPM_TOKEN` (GitHub Packages npm registry) are derived from the same `GH_PAT` at runtime. Compromise of either access path exposes the full PAT, which may have scopes beyond what each consumer needs individually.
+- **Description:** Both `GH_TOKEN` (GitHub API / git credential helper) and `CODETAINER_NPM_TOKEN` (GitHub Packages npm registry) are derived from the same `GH_PAT` at runtime. Compromise of either access path exposes the full PAT, which may have scopes beyond what each consumer needs individually.
 - **Why it can't be resolved:** GitHub fine-grained PATs do not yet support the scope separation needed to create two tokens with disjoint permissions for `gh` CLI operations vs. npm registry access. The operational complexity of managing two classic PATs with minimal-overlap scopes exceeds the security benefit in a single-purpose container.
-- **Compensating controls:** The `CLAUDETAINER_NPM_TOKEN` abstraction allows a future split to separate tokens without changing consumer code. Network isolation limits where either token can be used. Operators should follow least-privilege guidance: prefer fine-grained PATs with minimal scopes.
+- **Compensating controls:** The `CODETAINER_NPM_TOKEN` abstraction allows a future split to separate tokens without changing consumer code. Network isolation limits where either token can be used. Operators should follow least-privilege guidance: prefer fine-grained PATs with minimal scopes.
 - **Severity:** Low
 - **Date identified:** 2026-04-02 (identified during panel review of #32)
 - **Last updated:** 2026-04-06 (removed command approval references — layer pending replacement)

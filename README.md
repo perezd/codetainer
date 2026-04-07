@@ -1,4 +1,4 @@
-# Claudetainer
+# Codetainer
 
 A hardened Docker container that runs [Claude Code](https://claude.ai/code) on [Fly.io](https://fly.io), accessible via SSH. Designed for long-running, autonomous coding sessions with container hardening and strict network isolation.
 
@@ -93,7 +93,7 @@ Pick the [Fly.io region](https://fly.io/docs/reference/regions/) closest to you 
 **Option A: Prebuilt image (fastest)**
 
 ```bash
-fly machine run ghcr.io/perezd/claudetainer:latest \
+fly machine run ghcr.io/perezd/codetainer:latest \
   --app <your-app-name> \
   --region <your-region> \
   --restart no \
@@ -108,7 +108,7 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 To give Claude an immediate task, add an initialization prompt:
 
 ```bash
-fly machine run ghcr.io/perezd/claudetainer:latest \
+fly machine run ghcr.io/perezd/codetainer:latest \
   --app <your-app-name> \
   --region <your-region> \
   --restart no \
@@ -128,8 +128,8 @@ Claude will begin working on the prompt as soon as the container is ready, befor
 If you want to customize the image (e.g. change installed tools or network allowlists), clone the repo and build directly:
 
 ```bash
-git clone https://github.com/perezd/claudetainer.git
-cd claudetainer
+git clone https://github.com/perezd/codetainer.git
+cd codetainer
 
 fly machine run . --dockerfile Dockerfile \
   --app <your-app-name> \
@@ -168,7 +168,7 @@ Fine-grained tokens are recommended when the target repo belongs to a GitHub **o
 **How to create a fine-grained token (recommended):**
 
 1. Log into the robot GitHub account and go to [github.com/settings/tokens](https://github.com/settings/tokens?type=beta). Click **Generate new token** (fine-grained)
-2. Give it a descriptive name (e.g. `claudetainer - my-repo`)
+2. Give it a descriptive name (e.g. `codetainer - my-repo`)
 3. Under **Resource owner**, select the org or user that owns the repo
 4. Under **Repository access**, select **Only select repositories** and pick the single repo you want Claude to work in
 5. Under **Repository permissions**, grant exactly these:
@@ -230,15 +230,15 @@ See [Telemetry](#telemetry-optional) below for what gets exported and privacy co
 
 These are set via `--env` flags on `fly machine run`. They are not sensitive and don't need to be secrets.
 
-| Variable                   | Required | Default                           | Description                                                                                                                                                                                                                                         |
-| -------------------------- | -------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GIT_USER_NAME`            | No       | `claudetainer`                    | Git commit author name                                                                                                                                                                                                                              |
-| `GIT_USER_EMAIL`           | No       | `claudetainer@noreply.github.com` | Git commit author email                                                                                                                                                                                                                             |
-| `REPO_URL`                 | No       | _(none)_                          | HTTPS URL of a GitHub repo to clone on startup. Cloned to `/workspace/repo`. Must be accessible with the `GH_PAT`.                                                                                                                                  |
-| `CLAUDE_PROMPT`            | No       | _(none)_                          | Initialization prompt for Claude Code. When set, Claude immediately begins working on this prompt at boot. Typically a GitHub issue URL (e.g., `https://github.com/org/repo/issues/42`). Visible via `fly machine status` — do not include secrets. |
-| `OTEL_LOG_USER_PROMPTS`    | No       | `1`                               | Set to `0` to exclude user prompt content from telemetry events (only prompt length is recorded). Requires Grafana Cloud telemetry to be enabled.                                                                                                   |
-| `OTEL_LOG_TOOL_DETAILS`    | No       | `1`                               | Set to `0` to exclude tool parameters from telemetry events (only tool name is recorded). Requires Grafana Cloud telemetry to be enabled.                                                                                                           |
-| `OTEL_RESOURCE_ATTRIBUTES` | No       | _(auto: Fly identity)_            | Comma-separated `key=value` pairs added to all metrics and events. `fly.app_name` and `fly.machine_id` are auto-injected; operator values are appended. Requires Grafana Cloud telemetry to be enabled.                                             |
+| Variable                   | Required | Default                         | Description                                                                                                                                                                                                                                         |
+| -------------------------- | -------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GIT_USER_NAME`            | No       | `codetainer`                    | Git commit author name                                                                                                                                                                                                                              |
+| `GIT_USER_EMAIL`           | No       | `codetainer@noreply.github.com` | Git commit author email                                                                                                                                                                                                                             |
+| `REPO_URL`                 | No       | _(none)_                        | HTTPS URL of a GitHub repo to clone on startup. Cloned to `/workspace/repo`. Must be accessible with the `GH_PAT`.                                                                                                                                  |
+| `CLAUDE_PROMPT`            | No       | _(none)_                        | Initialization prompt for Claude Code. When set, Claude immediately begins working on this prompt at boot. Typically a GitHub issue URL (e.g., `https://github.com/org/repo/issues/42`). Visible via `fly machine status` — do not include secrets. |
+| `OTEL_LOG_USER_PROMPTS`    | No       | `1`                             | Set to `0` to exclude user prompt content from telemetry events (only prompt length is recorded). Requires Grafana Cloud telemetry to be enabled.                                                                                                   |
+| `OTEL_LOG_TOOL_DETAILS`    | No       | `1`                             | Set to `0` to exclude tool parameters from telemetry events (only tool name is recorded). Requires Grafana Cloud telemetry to be enabled.                                                                                                           |
+| `OTEL_RESOURCE_ATTRIBUTES` | No       | _(auto: Fly identity)_          | Comma-separated `key=value` pairs added to all metrics and events. `fly.app_name` and `fly.machine_id` are auto-injected; operator values are appended. Requires Grafana Cloud telemetry to be enabled.                                             |
 
 ## Usage
 
@@ -281,7 +281,7 @@ The machine is configured with `--restart no` and `--autostart=false`, so it sta
 
 ## Telemetry (Optional)
 
-Claudetainer can export Claude Code's native OpenTelemetry metrics and events to [Grafana Cloud](https://grafana.com/products/cloud/) via direct OTLP push. This gives you dashboards for token usage, costs, session activity, and full prompt-level event traces — all in Grafana.
+Codetainer can export Claude Code's native OpenTelemetry metrics and events to [Grafana Cloud](https://grafana.com/products/cloud/) via direct OTLP push. This gives you dashboards for token usage, costs, session activity, and full prompt-level event traces — all in Grafana.
 
 The feature is **opt-in** and **disabled by default**. It activates only when all three Grafana Cloud secrets are set (`GRAFANA_INSTANCE_ID`, `GRAFANA_API_TOKEN`, `GRAFANA_OTLP_ENDPOINT`). When off, there is zero telemetry, zero outbound traffic, and no behavior change.
 
@@ -397,7 +397,7 @@ Edit `claude-settings.json` to add entries under `mcpServers`. The default confi
 | `shared-cpu-2x` / 4GB | Heavy       | Large repos, parallel builds |
 
 ```bash
-fly machine run ghcr.io/perezd/claudetainer:latest \
+fly machine run ghcr.io/perezd/codetainer:latest \
   --vm-memory 2048 \
   --vm-size shared-cpu-2x \
   ...
@@ -432,7 +432,7 @@ fly machine run ghcr.io/perezd/claudetainer:latest \
 ### Source Repository Layout
 
 ```
-claudetainer/
+codetainer/
 ├── network/                     # Network isolation layer
 │   ├── domains.conf             # Domain allowlist (one per line)
 │   └── Corefile.template        # CoreDNS base config (catch-all NXDOMAIN)
@@ -516,10 +516,10 @@ All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Do
 The GitHub Actions workflow (`.github/workflows/build.yml`) builds and pushes the container image to GHCR on every push to `main`:
 
 ```
-ghcr.io/perezd/claudetainer:latest
+ghcr.io/perezd/codetainer:latest
 ```
 
-The GHCR package must be set to **public** visibility so Fly.io can pull it without registry credentials. To set this, go to the GitHub repo → Packages → `claudetainer` → Package settings → Change visibility → Public.
+The GHCR package must be set to **public** visibility so Fly.io can pull it without registry credentials. To set this, go to the GitHub repo → Packages → `codetainer` → Package settings → Change visibility → Public.
 
 ## Troubleshooting
 
