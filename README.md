@@ -70,7 +70,7 @@ See [Configuration](docs/configuration.md) for how to create these tokens.
 **Option A: Prebuilt image (fastest)**
 
 ```bash
-fly machine run ghcr.io/perezd/codetainer:latest \
+fly machine run ghcr.io/limbic-systems/codetainer:latest \
   --app <your-app-name> \
   --region <your-region> \
   --restart no \

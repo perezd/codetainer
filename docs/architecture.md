@@ -113,5 +113,5 @@ All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Do
 The GitHub Actions workflow (`.github/workflows/build.yml`) builds and pushes the container image to GHCR on every push to `main`:
 
 ```
-ghcr.io/perezd/codetainer:latest
+ghcr.io/limbic-systems/codetainer:latest
 ```

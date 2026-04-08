@@ -62,7 +62,7 @@ Pick the [Fly.io region](https://fly.io/docs/reference/regions/) closest to you 
 **Option A: Prebuilt image (fastest)**
 
 ```bash
-fly machine run ghcr.io/perezd/codetainer:latest \
+fly machine run ghcr.io/limbic-systems/codetainer:latest \
   --app <your-app-name> \
   --region <your-region> \
   --restart no \
@@ -77,7 +77,7 @@ fly machine run ghcr.io/perezd/codetainer:latest \
 To give Claude an immediate task, add an initialization prompt:
 
 ```bash
-fly machine run ghcr.io/perezd/codetainer:latest \
+fly machine run ghcr.io/limbic-systems/codetainer:latest \
   --app <your-app-name> \
   --region <your-region> \
   --restart no \
@@ -97,7 +97,7 @@ Claude will begin working on the prompt as soon as the container is ready, befor
 If you want to customize the image (e.g. change installed tools or network allowlists), clone the repo and build directly:
 
 ```bash
-git clone https://github.com/perezd/codetainer.git
+git clone https://github.com/limbic-systems/codetainer.git
 cd codetainer
 
 fly machine run . --dockerfile Dockerfile \
@@ -143,7 +143,7 @@ Switch panes with `Ctrl-b ↓` / `Ctrl-b ↑` or click with the mouse.
 | `shared-cpu-2x` / 4GB | Heavy       | Large repos, parallel builds |
 
 ```bash
-fly machine run ghcr.io/perezd/codetainer:latest \
+fly machine run ghcr.io/limbic-systems/codetainer:latest \
   --vm-memory 2048 \
   --vm-size shared-cpu-2x \
   ...

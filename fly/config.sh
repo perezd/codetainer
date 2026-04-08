@@ -2,7 +2,7 @@
 # Shared configuration for fly machine run commands.
 
 APP="codetainer"
-IMAGE="ghcr.io/perezd/codetainer:latest"
+IMAGE="ghcr.io/limbic-systems/codetainer:latest"
 
 COMMON_FLAGS=(
   --app "$APP"
