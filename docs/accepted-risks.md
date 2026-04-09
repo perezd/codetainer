@@ -58,6 +58,15 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Date identified:** 2026-04-02 (identified during panel review of #32)
 - **Last updated:** 2026-04-06 (removed command approval references — layer pending replacement)
 
+### Runtime Go module ingestion enables arbitrary code execution
+
+- **Affected layer:** Network Isolation, Container Hardening
+- **Description:** With `proxy.golang.org` and `sum.golang.org` allowlisted, `go get` and `go build` can fetch and compile arbitrary third-party Go modules at runtime. Module code executes as the `claude` user (UID 1000) with access to session environment variables including `GH_PAT` and `CLAUDE_CODE_OAUTH_TOKEN`. This is equivalent to the pre-existing risk from `npm install` and `pip install` which can also fetch and execute arbitrary code.
+- **Why it can't be resolved:** Runtime module fetching is required for Go development workflows. Restricting it would make Go support non-functional for projects with external dependencies.
+- **Compensating controls:** The checksum database (`sum.golang.org`) provides content-integrity verification. `GOPROXY=https://proxy.golang.org,off` prevents direct VCS fallback. `GONOSUMDB=""` ensures all modules are verified. The container's ephemeral tmpfs prevents persistence across sessions. Network isolation limits exfiltration to allowlisted domains only. `GOPATH/bin` is appended (not prepended) to PATH, so `go install` output does not take precedence over system binaries (note: pre-existing user-writable dirs like `$HOME/.local/bin` are prepended by the base image configuration — that is a separate, pre-existing PATH ordering concern not introduced by this change). Note: the claude user can override Go env vars (`GOPROXY`, `GONOSUMDB`) within a session via shell environment or the `GOENV` file (`~/.config/go/env`) on tmpfs — the network allowlist is the primary compensating control since even a `GOPROXY=direct` override cannot reach unlisted VCS hosts.
+- **Severity:** Medium
+- **Date identified:** 2026-04-09 (identified during panel review of Go support design)
+
 ---
 
 ## Resolved Risks

@@ -23,6 +23,11 @@ run_as_claude() {
     GH_TOKEN="$GH_PAT" \
     CODETAINER_NPM_TOKEN="$GH_PAT" \
     CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
+    GOPATH="$CLAUDE_HOME/go" \
+    GOPROXY="${GOPROXY:-https://proxy.golang.org,off}" \
+    GONOSUMDB="${GONOSUMDB-}" \
+    GOFLAGS="${GOFLAGS-}" \
+    GOTELEMETRY="${GOTELEMETRY:-off}" \
     LANG="$LANG" \
     LC_ALL="$LC_ALL" \
     "${OTEL_ENV_ARGS[@]}" \
@@ -111,6 +116,8 @@ if run_as_claude claude plugin marketplace add anthropics/claude-plugins-officia
     || echo "WARNING: Plugin install failed (superpowers)" >&2
   run_as_claude claude plugin install typescript-lsp@claude-plugins-official 2>&1 \
     || echo "WARNING: Plugin install failed (typescript-lsp)" >&2
+  run_as_claude claude plugin install gopls-lsp@claude-plugins-official 2>&1 \
+    || echo "WARNING: Plugin install failed (gopls-lsp)" >&2
 else
   echo "WARNING: Failed to add marketplace — skipping plugin install" >&2
 fi
@@ -145,6 +152,11 @@ sudo -u claude \
   GH_TOKEN="$GH_PAT" \
   CODETAINER_NPM_TOKEN="$GH_PAT" \
   CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
+  GOPATH="$CLAUDE_HOME/go" \
+  GOPROXY="${GOPROXY:-https://proxy.golang.org,off}" \
+  GONOSUMDB="${GONOSUMDB-}" \
+  GOFLAGS="${GOFLAGS-}" \
+  GOTELEMETRY="${GOTELEMETRY:-off}" \
   COLORTERM="truecolor" \
   LANG="$LANG" \
   LC_ALL="$LC_ALL" \
@@ -159,6 +171,11 @@ sudo -u claude \
   PATH="$CLAUDE_HOME/.local/bin:$CLAUDE_HOME/.bun/bin:$PATH" \
   GH_TOKEN="$GH_PAT" \
   CODETAINER_NPM_TOKEN="$GH_PAT" \
+  GOPATH="$CLAUDE_HOME/go" \
+  GOPROXY="${GOPROXY:-https://proxy.golang.org,off}" \
+  GONOSUMDB="${GONOSUMDB-}" \
+  GOFLAGS="${GOFLAGS-}" \
+  GOTELEMETRY="${GOTELEMETRY:-off}" \
   COLORTERM="truecolor" \
   LANG="$LANG" \
   LC_ALL="$LC_ALL" \
