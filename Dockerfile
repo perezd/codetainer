@@ -50,6 +50,13 @@ RUN ARCH=$(dpkg --print-architecture) \
     && tar -xz -C /usr/local < /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz
 
+ENV GOPATH="/home/claude/go"
+ENV GOTELEMETRY="off"
+ENV GOPROXY="https://proxy.golang.org,off"
+ENV GONOSUMDB=""
+ENV GOFLAGS=""
+ENV PATH="${PATH}:/usr/local/go/bin:/home/claude/go/bin"
+
 # gh CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
