@@ -49,6 +49,14 @@ fly secrets set \
 
 All events from a single user prompt share a `prompt.id` for correlation.
 
+**Traces** (→ Grafana Tempo):
+
+- Distributed tracing links each user prompt to the API requests and tool executions it triggers, viewable as a single trace in Grafana
+- Auto-enabled alongside metrics and logs when Grafana Cloud credentials are configured
+- Span content fidelity is controlled by the same privacy settings described below
+
+When tracing is active, Bash subprocesses automatically inherit a `TRACEPARENT` environment variable containing the W3C trace context of the active tool execution span. This lets any subprocess that reads `TRACEPARENT` parent its own spans under the same trace, enabling end-to-end distributed tracing through scripts and commands that Claude runs.
+
 ## Privacy Controls
 
 When telemetry is enabled, **full fidelity is the default** — prompt content and tool parameters are included. The rationale: if you've provided Grafana Cloud credentials, you want full observability.
@@ -61,13 +69,13 @@ fly machine run ... \
   --env OTEL_LOG_TOOL_DETAILS=0
 ```
 
-With `OTEL_LOG_USER_PROMPTS=0`, only prompt length is recorded (not content). With `OTEL_LOG_TOOL_DETAILS=0`, only tool names are recorded (not parameters). Raw file contents are never included regardless of settings.
+With `OTEL_LOG_USER_PROMPTS=0`, only prompt length is recorded (not content). With `OTEL_LOG_TOOL_DETAILS=0`, only tool names are recorded (not parameters) — this applies to both log events and trace spans. Raw file contents are never included regardless of settings.
 
 **Data residency note:** When enabled, telemetry data (including prompt content if not opted out) leaves the container and is stored in Grafana Cloud. You are responsible for ensuring this meets your data residency and privacy requirements.
 
 ## Resource Attributes
 
-All metrics and events are tagged with resource attributes for filtering and grouping in Grafana dashboards.
+All metrics, events, and traces are tagged with resource attributes for filtering and grouping in Grafana dashboards.
 
 **Auto-injected** (always present when telemetry is enabled):
 

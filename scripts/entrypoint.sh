@@ -202,8 +202,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=$GRAFANA_OTLP_ENDPOINT
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic $(echo -n "${GRAFANA_INSTANCE_ID}:${GRAFANA_API_TOKEN}" | base64 -w 0)
 OTEL_LOG_USER_PROMPTS=${OTEL_LOG_USER_PROMPTS:-1}
 OTEL_LOG_TOOL_DETAILS=${OTEL_LOG_TOOL_DETAILS:-1}
+CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1
+OTEL_TRACES_EXPORTER=otlp
+OTEL_LOG_TOOL_CONTENT=${OTEL_LOG_TOOL_DETAILS:-1}
 OTELENV
   )
+  # OTEL_LOG_TOOL_CONTENT intentionally mirrors OTEL_LOG_TOOL_DETAILS —
+  # one operator knob controls tool content visibility across log events and trace spans
   # Append resource attributes as a separate line (only if non-empty)
   if [[ -n "$OTEL_ATTRS" ]]; then
     echo "OTEL_RESOURCE_ATTRIBUTES=${OTEL_ATTRS}" >> /tmp/otel/otel-env
