@@ -111,6 +111,8 @@ if run_as_claude claude plugin marketplace add anthropics/claude-plugins-officia
     || echo "WARNING: Plugin install failed (superpowers)" >&2
   run_as_claude claude plugin install typescript-lsp@claude-plugins-official 2>&1 \
     || echo "WARNING: Plugin install failed (typescript-lsp)" >&2
+  run_as_claude claude plugin install gopls-lsp@claude-plugins-official 2>&1 \
+    || echo "WARNING: Plugin install failed (gopls-lsp)" >&2
 else
   echo "WARNING: Failed to add marketplace — skipping plugin install" >&2
 fi
