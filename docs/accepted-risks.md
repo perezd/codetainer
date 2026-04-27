@@ -24,10 +24,10 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Affected layer:** Container Hardening, Network Isolation
 - **Description:** When `CLAUDE_PROMPT` is set, Claude operates autonomously with full `GH_PAT` and `CLAUDE_CODE_OAUTH_TOKEN` access before a human connects via SSH. `--dangerously-skip-permissions` is active. The operator is expected to SSH in to observe — this is not a fully headless mode.
 - **Why it can't be resolved:** Immediate tasking at boot is the core value of the feature. Requiring SSH before Claude starts would defeat the purpose.
-- **Compensating controls:** Network isolation limits exfiltration targets. Users always SSH in to observe and interact. The prompt's SHA-256 hash is logged at boot for audit correlation.
+- **Compensating controls:** Network isolation limits exfiltration targets. Users always SSH in to observe and interact. The prompt's SHA-256 hash is logged at boot for audit correlation. Stargate command classification gates all Bash tool invocations — YELLOW commands in autonomous mode are blocked (fail-closed) because the "ask user" fallback has no human to approve.
 - **Severity:** Medium
 - **Date identified:** 2026-03-30 (identified during panel review of #23)
-- **Last updated:** 2026-04-06 (removed command approval references — layer pending replacement)
+- **Last updated:** 2026-04-27 (added Stargate command control as compensating control)
 
 ### CLAUDE_PROMPT visible via Fly Machines API
 
@@ -43,20 +43,20 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Affected layer:** Container Hardening
 - **Description:** The `claude` user has a targeted sudoers entry allowing `sudo /usr/bin/cat /opt/gh-config/.ghtoken`. This is used by `gh-wrapper.sh` as a fallback when Claude Code strips `GH_TOKEN` from subprocess environments.
 - **Why it can't be resolved:** The `gh-wrapper.sh` must run as the `claude` user (UID 1000) because `gh` commands are invoked by claude's processes. When Claude Code strips environment variables from subprocesses, the wrapper needs a fallback credential source. Making the token file `root:root 600` with a sudoers-mediated read is the strongest protection available without a compiled setuid helper.
-- **Compensating controls:** The sudoers entry is narrowly scoped to one specific file path (no wildcards). The read-only rootfs (remounted read-only after setup) prevents modification of the sudoers entry, wrapper script, and token file. Network isolation independently limits exfiltration targets.
+- **Compensating controls:** The sudoers entry is narrowly scoped to one specific file path (no wildcards). The read-only rootfs (remounted read-only after setup) prevents modification of the sudoers entry, wrapper script, and token file. Network isolation independently limits exfiltration targets. Stargate includes a targeted RED rule that blocks direct reads of /opt/gh-config/.ghtoken via the Bash tool. The gh-wrapper.sh credential helper path runs outside Claude Code's Bash tool and is unaffected.
 - **Severity:** Medium
 - **Date identified:** 2026-04-02 (identified during panel review of #32)
-- **Last updated:** 2026-04-06 (removed command approval references — layer pending replacement)
+- **Last updated:** 2026-04-27 (added Stargate RED rule as compensating control)
 
 ### Single PAT for GitHub API and npm registry auth
 
 - **Affected layer:** Container Hardening
 - **Description:** Both `GH_TOKEN` (GitHub API / git credential helper) and `CODETAINER_NPM_TOKEN` (GitHub Packages npm registry) are derived from the same `GH_PAT` at runtime. Compromise of either access path exposes the full PAT, which may have scopes beyond what each consumer needs individually.
 - **Why it can't be resolved:** GitHub fine-grained PATs do not yet support the scope separation needed to create two tokens with disjoint permissions for `gh` CLI operations vs. npm registry access. The operational complexity of managing two classic PATs with minimal-overlap scopes exceeds the security benefit in a single-purpose container.
-- **Compensating controls:** The `CODETAINER_NPM_TOKEN` abstraction allows a future split to separate tokens without changing consumer code. Network isolation limits where either token can be used. Operators should follow least-privilege guidance: prefer fine-grained PATs with minimal scopes.
+- **Compensating controls:** The `CODETAINER_NPM_TOKEN` abstraction allows a future split to separate tokens without changing consumer code. Network isolation limits where either token can be used. Operators should follow least-privilege guidance: prefer fine-grained PATs with minimal scopes. Stargate's github_owners scope restricts gh CLI operations to the repo owner derived from REPO_URL, preventing unscoped GitHub API access.
 - **Severity:** Low
 - **Date identified:** 2026-04-02 (identified during panel review of #32)
-- **Last updated:** 2026-04-06 (removed command approval references — layer pending replacement)
+- **Last updated:** 2026-04-27 (added Stargate scope restriction as compensating control)
 
 ---
 
