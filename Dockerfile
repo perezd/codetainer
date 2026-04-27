@@ -59,10 +59,17 @@ RUN ARCH=$(dpkg --print-architecture) && \
     && chmod +x /usr/local/bin/coredns
 
 # Stargate — bash command classifier for AI coding agents
-RUN STARGATE_VERSION=v0.1.1 && \
-    STARGATE_SHA256="06b0d805353468ddc88eb07f494d27af53a0ec8bfb871e9e8bfde5edf09ab43e" && \
+RUN ARCH=$(dpkg --print-architecture) && \
+    STARGATE_VERSION=v0.1.1 && \
+    if [ "$ARCH" = "amd64" ]; then \
+      STARGATE_SHA256="06b0d805353468ddc88eb07f494d27af53a0ec8bfb871e9e8bfde5edf09ab43e"; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      STARGATE_SHA256="7482af9e4ec1273df6437a82674ec284ea18a0112edf08e2030ad88ef3857e89"; \
+    else \
+      echo "Unsupported architecture: $ARCH" >&2; exit 1; \
+    fi && \
     curl -fsSL \
-      "https://github.com/limbic-systems/stargate/releases/download/${STARGATE_VERSION}/stargate-linux-amd64" \
+      "https://github.com/limbic-systems/stargate/releases/download/${STARGATE_VERSION}/stargate-linux-${ARCH}" \
       -o /usr/local/bin/stargate && \
     echo "${STARGATE_SHA256}  /usr/local/bin/stargate" | sha256sum -c - && \
     chmod 755 /usr/local/bin/stargate

@@ -37,11 +37,11 @@ checksum verification. Place at `/usr/local/bin/stargate` (mode 755). Inserted
 after CoreDNS installation (~line 60).
 
 ```dockerfile
-# Stargate — bash command classifier
-RUN STARGATE_VERSION=v0.1.0 && \
-    STARGATE_SHA256="<sha256-hash-here>" && \
+# Illustrative — see Dockerfile for actual implementation (includes arch detection + per-arch checksums)
+RUN ARCH=$(dpkg --print-architecture) && \
+    STARGATE_VERSION=v0.1.1 && \
     curl -fsSL \
-      "https://github.com/limbic-systems/stargate/releases/download/${STARGATE_VERSION}/stargate-linux-amd64" \
+      "https://github.com/limbic-systems/stargate/releases/download/${STARGATE_VERSION}/stargate-linux-${ARCH}" \
       -o /usr/local/bin/stargate && \
     echo "${STARGATE_SHA256}  /usr/local/bin/stargate" | sha256sum -c - && \
     chmod 755 /usr/local/bin/stargate

@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "stargate hook --agent claude-code --event pre-tool-use",
+            "command": "/usr/local/bin/stargate hook --agent claude-code --event pre-tool-use",
             "timeout": 30000
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "stargate hook --agent claude-code --event post-tool-use",
+            "command": "/usr/local/bin/stargate hook --agent claude-code --event post-tool-use",
             "timeout": 10000
           }
         ]
