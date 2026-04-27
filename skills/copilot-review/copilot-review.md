@@ -82,10 +82,10 @@ Fetch all unresolved review threads using the GraphQL API:
 
 ```bash
 gh api graphql --paginate -f query='
-query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+query($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
-      reviewThreads(filterBy: {resolved: false}, first: 100, after: $cursor) {
+      reviewThreads(filterBy: {resolved: false}, first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id

@@ -32,11 +32,11 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
     sleep "$POLL_INTERVAL"
   fi
 
-  REVIEWS=$(gh api "repos/${OWNER_REPO}/pulls/${PR_NUMBER}/reviews" \
-    --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | sort_by(.id) | last | "\(.id)\t\(.body)"' \
+  REVIEW_JSON=$(gh api "repos/${OWNER_REPO}/pulls/${PR_NUMBER}/reviews" \
+    --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | sort_by(.id) | last // empty' \
     2>"$STDERR_FILE") || {
       STDERR=$(cat "$STDERR_FILE" 2>/dev/null)
-      if echo "$STDERR" | grep -qE "HTTP (403|429)"; then
+      if echo "$STDERR" | grep -qiE "rate limit|secondary rate|abuse detection"; then
         RATE_LIMIT_CONSECUTIVE=$((RATE_LIMIT_CONSECUTIVE + 1))
         if (( RATE_LIMIT_CONSECUTIVE >= RATE_LIMIT_MAX )); then
           echo "RATE_LIMITED"
@@ -53,12 +53,12 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
 
   RATE_LIMIT_CONSECUTIVE=0
 
-  [[ -z "$REVIEWS" || "$REVIEWS" == "null" ]] && continue
+  [[ -z "$REVIEW_JSON" ]] && continue
 
-  REVIEW_ID=$(printf '%s' "$REVIEWS" | cut -f1)
-  REVIEW_BODY=$(printf '%s' "$REVIEWS" | cut -f2-)
+  REVIEW_ID=$(printf '%s' "$REVIEW_JSON" | jq -r '.id // empty')
+  REVIEW_BODY=$(printf '%s' "$REVIEW_JSON" | jq -r '.body // empty')
 
-  [[ -z "$REVIEW_ID" || "$REVIEW_ID" == "null" ]] && continue
+  [[ -z "$REVIEW_ID" ]] && continue
   [[ "$REVIEW_ID" == "$STALE_REVIEW_ID" ]] && continue
 
   # Thread count includes all reviewers, not just Copilot — by design, since the
