@@ -18,6 +18,7 @@ You (local machine)
 │  entrypoint.sh (PID 1, root)                        │
 │  ├── CoreDNS (domain allowlist DNS)                 │
 │  ├── iptables (OUTPUT DROP + IP allowlist)          │
+│  ├── Stargate (bash command classifier, localhost)  │
 │  ├── tmpfs mounts (/workspace, /home/claude, /tmp)  │
 │  ├── read-only root filesystem                      │
 │  └── start-claude → tmux session (at boot)          │

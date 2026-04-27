@@ -11,12 +11,13 @@ Internal reference for Codetainer's boot process, scripts, and file layouts.
 5. Generates CoreDNS config from domain allowlist, starts CoreDNS
 6. Applies iptables rules, starts 5-minute refresh loop
 7. Configures git identity, gh CLI auth, npm registry auth
-8. Copies Claude Code settings, skips onboarding wizard
-9. Remounts root filesystem read-only
-10. Clones `REPO_URL` if set
-11. Runs readiness checks
-12. Starts Claude Code in background (start-claude.sh — installs plugins, creates tmux session)
-13. Waits for SSH connections
+8. Generates Stargate config from template (patches scopes + telemetry), starts Stargate server as `claude` user
+9. Copies Claude Code settings, skips onboarding wizard
+10. Remounts root filesystem read-only
+11. Clones `REPO_URL` if set
+12. Runs readiness checks (CoreDNS, iptables, Stargate, settings, repo)
+13. Starts Claude Code in background (start-claude.sh — installs plugins, creates tmux session)
+14. Waits for SSH connections
 
 ## SSH Login Flow
 
@@ -33,9 +34,12 @@ codetainer/
 ├── network/                     # Network isolation layer
 │   ├── domains.conf             # Domain allowlist (one per line)
 │   └── Corefile.template        # CoreDNS base config (catch-all NXDOMAIN)
+├── stargate/                    # Stargate command control config
+│   └── stargate.toml            # Static config template (rules, scopes, classification policy)
 ├── scripts/                     # Runtime scripts (copied into container)
 │   ├── entrypoint.sh            # PID 1 boot script (see Boot Sequence)
 │   ├── start-claude.sh          # SSH login handler — tmux session manager
+│   ├── generate-stargate-config.sh  # Boot-time Stargate config from template + env vars
 │   ├── refresh-iptables.sh      # Resolves allowlisted domains → iptables rules
 │   ├── gh-wrapper.sh            # gh CLI wrapper ensuring GH_CONFIG_DIR is set
 │   ├── session-namer.sh         # Stop hook — renames tmux session via Haiku
@@ -57,16 +61,17 @@ codetainer/
 
 All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Docker build.
 
-| Script                      | Description                                                                                                                                                                                                                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`entrypoint.sh`**         | PID 1 boot script. Runs as root. Validates secrets, mounts tmpfs, starts CoreDNS, applies iptables, configures git/gh/npm auth, installs plugins, remounts rootfs read-only, clones the repo, and runs readiness checks. See [Boot Sequence](#boot-sequence) for the full order.     |
-| **`start-claude.sh`**       | Init-only boot script (invoked by `entrypoint.sh`). Acquires exclusive flock, waits for readiness, writes `CLAUDE_PROMPT` to temp file (if set), installs plugins, creates tmux session with Claude Code (top pane, 80%) and bash shell (bottom pane, 20%). Releases lock when done. |
-| **`attach-claude.sh`**      | SSH login handler (invoked by `.bashrc`). If a tmux session exists, attaches immediately. Otherwise, waits for `start-claude.sh` to complete via shared flock (5-min timeout), tailing the boot log for progress, then attaches.                                                     |
-| **`refresh-iptables.sh`**   | Resolves every domain in `network/domains.conf` to IPs via `dig`, builds an iptables ruleset with OUTPUT DROP default policy and ACCEPT rules for resolved IPs, then atomically applies it with `iptables-restore`. Called once at boot and every 5 minutes thereafter.              |
-| **`gh-wrapper.sh`**         | Thin wrapper around `/usr/bin/gh` that hardcodes `GH_CONFIG_DIR=/opt/gh-config`. Needed because Claude Code's subprocess chain can strip environment variables, which would break `gh` authentication. Installed as `/usr/local/bin/gh` to shadow the real binary.                   |
-| **`session-namer.sh`**      | Claude Code Stop hook. After the first assistant response in a session, sends the session context to Haiku to generate a short kebab-case name (e.g., `fixing-auth-bug`), then renames the tmux session. Uses a sentinel file to run only once per session.                          |
-| **`statusline-command.sh`** | Claude Code status line hook. Renders the current model name, a context window usage bar (color-coded green/yellow/red), and the tmux session name. Output appears in Claude Code's status line.                                                                                     |
-| **`status.sh`**             | Diagnostic tool available as the `status` command inside the container. Shows recent iptables drops (from dmesg) and CoreDNS process status.                                                                                                                                         |
+| Script                            | Description                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`entrypoint.sh`**               | PID 1 boot script. Runs as root. Validates secrets, mounts tmpfs, starts CoreDNS, applies iptables, configures git/gh/npm auth, installs plugins, remounts rootfs read-only, clones the repo, and runs readiness checks. See [Boot Sequence](#boot-sequence) for the full order.                                                                                                    |
+| **`start-claude.sh`**             | Init-only boot script (invoked by `entrypoint.sh`). Acquires exclusive flock, waits for readiness, writes `CLAUDE_PROMPT` to temp file (if set), installs plugins, creates tmux session with Claude Code (top pane, 80%) and bash shell (bottom pane, 20%). Releases lock when done.                                                                                                |
+| **`attach-claude.sh`**            | SSH login handler (invoked by `.bashrc`). If a tmux session exists, attaches immediately. Otherwise, waits for `start-claude.sh` to complete via shared flock (5-min timeout), tailing the boot log for progress, then attaches.                                                                                                                                                    |
+| **`generate-stargate-config.sh`** | Boot-time config generator for Stargate. Copies the static template from `/opt/stargate/stargate.toml.template`, runs `stargate init` to create corpus/trace directories, then patches `github_owners` (from `REPO_URL`) and `allowed_domains` (from `domains.conf`). Optionally enables telemetry when Grafana env vars are set. Locks the final config to mode 444 on the rootfs. |
+| **`refresh-iptables.sh`**         | Resolves every domain in `network/domains.conf` to IPs via `dig`, builds an iptables ruleset with OUTPUT DROP default policy and ACCEPT rules for resolved IPs, then atomically applies it with `iptables-restore`. Called once at boot and every 5 minutes thereafter.                                                                                                             |
+| **`gh-wrapper.sh`**               | Thin wrapper around `/usr/bin/gh` that hardcodes `GH_CONFIG_DIR=/opt/gh-config`. Needed because Claude Code's subprocess chain can strip environment variables, which would break `gh` authentication. Installed as `/usr/local/bin/gh` to shadow the real binary.                                                                                                                  |
+| **`session-namer.sh`**            | Claude Code Stop hook. After the first assistant response in a session, sends the session context to Haiku to generate a short kebab-case name (e.g., `fixing-auth-bug`), then renames the tmux session. Uses a sentinel file to run only once per session.                                                                                                                         |
+| **`statusline-command.sh`**       | Claude Code status line hook. Renders the current model name, a context window usage bar (color-coded green/yellow/red), and the tmux session name. Output appears in Claude Code's status line.                                                                                                                                                                                    |
+| **`status.sh`**                   | Diagnostic tool available as the `status` command inside the container. Shows recent iptables drops (from dmesg) and CoreDNS process status.                                                                                                                                                                                                                                        |
 
 ## Container File Layout
 
@@ -76,6 +81,8 @@ All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Do
 ├── bun               # Bun runtime
 ├── bunx              # Bun package runner
 ├── coredns           # DNS server
+├── stargate          # Bash command classifier
+├── generate-stargate-config.sh  # Stargate config generator
 ├── fly               # Fly.io CLI
 ├── gh                # gh-wrapper.sh (shadows /usr/bin/gh)
 ├── attach-claude     # SSH attach gate (attach-claude.sh)
@@ -93,6 +100,9 @@ All scripts live in `scripts/` and are copied to `/usr/local/bin/` during the Do
 │   ├── settings.json        # Claude Code settings template
 │   ├── statusline-command.sh  # Status line hook
 │   └── session-namer.sh      # Session naming hook
+├── stargate/
+│   ├── stargate.toml.template  # Static config template (from repo)
+│   └── stargate.toml           # Generated config (patched at boot, mode 444)
 └── gh-config/               # Shared gh CLI config (created at runtime)
 
 /workspace/              # tmpfs, 512MB — working directory

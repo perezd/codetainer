@@ -23,9 +23,18 @@ Codetainer enforces a three-layer security model. This document covers each laye
 - **5-minute refresh**: iptables rules are refreshed every 5 minutes to pick up IP changes
 - **IPv6 unrestricted**: Fly SSH requires public IPv6 routing, and Fly's kernel has broken IPv6 conntrack, so IPv6 output is left at ACCEPT. IPv4 iptables is the enforcement layer.
 
-## Layer 3: Command Control (Pending)
+## Layer 3: Command Control
 
-This layer is pending replacement by an external dependency. Previously provided by a built-in three-tier command classification pipeline. The Container Hardening and Network Isolation layers remain fully enforced.
+[Stargate](https://github.com/limbic-systems/stargate) classifies every Bash command before execution via Claude Code hooks:
+
+- **AST-based classification**: Commands are parsed into an AST and evaluated against configurable rules (RED/GREEN/YELLOW)
+- **Fail-closed**: If the Stargate server is unreachable, all Bash commands are blocked
+- **Scope-bound trust**: GitHub CLI operations and HTTP requests are evaluated against operator-defined scopes (`github_owners` derived from `REPO_URL`, `allowed_domains` derived from `network/domains.conf`)
+- **LLM review**: Ambiguous (YELLOW) commands are escalated to an LLM reviewer for semantic classification
+- **Immutable config**: The Stargate config (`stargate/stargate.toml`) is a static template shipped in the image, copied to the read-only rootfs at boot
+- **De-privileged**: The Stargate server runs as the `claude` user, not root
+
+See `stargate/stargate.toml` for the full rule set.
 
 ## Domain Allowlist
 
