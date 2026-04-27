@@ -4,11 +4,11 @@
 
 This project enforces a three-layer security model. You must evaluate every change against all three layers.
 
-| Layer                         | Defense                                                                                                                                 | Protects Against                                                                      | Key Files                                                                          |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Container Hardening**       | Non-root user (UID 1000), read-only rootfs, size-limited tmpfs (512MB /workspace, 1GB /home/claude, 512MB /tmp)                         | Privilege escalation, persistent compromise, disk-based DoS                           | `Dockerfile`, `scripts/entrypoint.sh`                                              |
-| **Network Isolation**         | Default-deny iptables (OUTPUT DROP), domain allowlist, CoreDNS NXDOMAIN for unlisted domains, metadata IP blocks, UDP drop (except DNS) | Data exfiltration, C2 communication, unauthorized API access, metadata endpoint abuse | `network/domains.conf`, `network/Corefile.template`, `network/refresh-iptables.sh` |
-| **Command Control (pending)** | _Pending replacement by external dependency_                                                                                            | Dangerous command execution, credential leaks, lateral movement                       | _TBD_                                                                              |
+| Layer                   | Defense                                                                                                                                 | Protects Against                                                                      | Key Files                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Container Hardening** | Non-root user (UID 1000), read-only rootfs, size-limited tmpfs (512MB /workspace, 1GB /home/claude, 512MB /tmp)                         | Privilege escalation, persistent compromise, disk-based DoS                           | `Dockerfile`, `scripts/entrypoint.sh`                                                  |
+| **Network Isolation**   | Default-deny iptables (OUTPUT DROP), domain allowlist, CoreDNS NXDOMAIN for unlisted domains, metadata IP blocks, UDP drop (except DNS) | Data exfiltration, C2 communication, unauthorized API access, metadata endpoint abuse | `network/domains.conf`, `network/Corefile.template`, `network/refresh-iptables.sh`     |
+| **Command Control**     | Stargate: AST-based classification, scope-bound trust, LLM review for YELLOW commands, fail-closed on server unreachable                | Dangerous command execution, credential leaks, lateral movement                       | `scripts/generate-stargate-config.sh`, `scripts/entrypoint.sh`, `claude-settings.json` |
 
 **Defense-in-depth:** No single layer is sufficient alone. If you weaken one layer, you must add compensating controls in another. Each layer is independently enforceable.
 
@@ -190,11 +190,12 @@ Container builds are manual. Never build or push Docker images.
 5. Apply iptables (network isolation, with Grafana host if set)
 6. Configure git/gh/npm auth (credential setup)
 7. Write OTEL env file (if Grafana credentials set)
-8. Copy Claude settings
-9. Remount rootfs read-only
-10. Clone repo
-11. Readiness checks
-12. Start Claude Code — invoke `start-claude.sh` in background (flock-synchronized)
+8. Configure and start Stargate (command control — de-privileged, fail-closed)
+9. Copy Claude settings (root-owned, immutable hooks)
+10. Remount rootfs read-only
+11. Clone repo
+12. Readiness checks (CoreDNS, iptables, Stargate, settings, repo)
+13. Start Claude Code — invoke `start-claude.sh` in background (flock-synchronized)
 
 Plugins are installed by `start-claude.sh` at boot (after marketplace initialization).
 OTEL env vars are written to `/tmp/otel/otel-env` (root-only directory, mode 700) by the entrypoint and forwarded through `sudo` by `start-claude.sh` using a key whitelist.
