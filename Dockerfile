@@ -79,11 +79,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Stargate — bash command classifier for AI coding agents
 RUN ARCH=$(dpkg --print-architecture) && \
-    STARGATE_VERSION=v0.1.1 && \
+    STARGATE_VERSION=v0.2.0 && \
     if [ "$ARCH" = "amd64" ]; then \
-      STARGATE_SHA256="06b0d805353468ddc88eb07f494d27af53a0ec8bfb871e9e8bfde5edf09ab43e"; \
+      STARGATE_SHA256="95d89c6fffe9dd39bab977a1c8d378edb6618dff26af042e3aa9edde98f70b00"; \
     elif [ "$ARCH" = "arm64" ]; then \
-      STARGATE_SHA256="7482af9e4ec1273df6437a82674ec284ea18a0112edf08e2030ad88ef3857e89"; \
+      STARGATE_SHA256="2c194329532056357a327af23d461b638b33bee19acb38184490858fe2e8f881"; \
     else \
       echo "Unsupported architecture: $ARCH" >&2; exit 1; \
     fi && \
@@ -148,7 +148,8 @@ COPY network/ /opt/network/
 COPY scripts/refresh-iptables.sh /opt/network/refresh-iptables.sh
 RUN chmod +x /opt/network/refresh-iptables.sh
 
-# Stargate config generator
+# Stargate config template and generator
+COPY stargate/stargate.toml /opt/stargate/stargate.toml.template
 COPY scripts/generate-stargate-config.sh /usr/local/bin/generate-stargate-config.sh
 RUN chmod +x /usr/local/bin/generate-stargate-config.sh
 

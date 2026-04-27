@@ -12,9 +12,11 @@ mkdir -p /opt/stargate && chmod 755 /opt/stargate
 # === 3. Symlink guard ===
 [[ -L "$STARGATE_CONFIG" ]] && rm -f "$STARGATE_CONFIG"
 
-# === 4. Write defaults ===
-# stargate init writes the embedded default config (~588 lines of TOML, 83 rules)
-/usr/local/bin/stargate init --config "$STARGATE_CONFIG"
+# === 4. Install static template, then initialize directories ===
+# Copy template first so stargate init validates OUR config (not the embedded default)
+# and creates corpus/trace directories based on our settings.
+cp /opt/stargate/stargate.toml.template "$STARGATE_CONFIG"
+/usr/local/bin/stargate --config "$STARGATE_CONFIG" init
 
 # === 5. Extract GitHub owner from REPO_URL ===
 GITHUB_OWNER=""
@@ -53,35 +55,16 @@ else
 fi
 sed -i "s|^allowed_domains = .*|allowed_domains = ${ALLOWED_DOMAINS}|" "$STARGATE_CONFIG"
 
-# === 8. Append targeted RED rule for credential file ===
-# Insert before the "# === GREEN Rules" section marker, which immediately follows the last RED rule.
-GREEN_LINE=$(grep -n '# === GREEN Rules' "$STARGATE_CONFIG" | head -1 | cut -d: -f1 || true)
-if [[ -z "$GREEN_LINE" ]]; then
-    echo "[STARGATE] ERROR: '# === GREEN Rules' marker not found in config — cannot insert credential protection rule" >&2
-    exit 1
-fi
-sed -i "${GREEN_LINE}i\\
-\\
-[[rules.red]]\\
-command = \"cat\"\\
-args = [\"/opt/gh-config/.ghtoken\", \"/opt/gh-config/*\"]\\
-reason = \"Direct read of credential file.\"" "$STARGATE_CONFIG"
-
-# === 9. Patch [telemetry] section ===
+# === 8. Patch [telemetry] section ===
 if [[ -n "${GRAFANA_INSTANCE_ID:-}" ]] && [[ -n "${GRAFANA_API_TOKEN:-}" ]] && [[ -n "${GRAFANA_OTLP_ENDPOINT:-}" ]]; then
-    # Enable telemetry and set the endpoint
     sed -i '/^\[telemetry\]/,/^$/{
         s|^enabled = .*|enabled = true|
-        s|^endpoint = .*|endpoint = "'"${GRAFANA_OTLP_ENDPOINT}"'"|
     }' "$STARGATE_CONFIG"
-else
-    # Ensure telemetry is disabled
-    sed -i '/^\[telemetry\]/,/^$/{
-        s|^enabled = .*|enabled = false|
-    }' "$STARGATE_CONFIG"
+    # Add endpoint line after [telemetry] header (before enabled)
+    sed -i "/^\[telemetry\]/a endpoint = \"${GRAFANA_OTLP_ENDPOINT}\"" "$STARGATE_CONFIG"
 fi
 
-# === 10. Lock permissions ===
+# === 9. Lock permissions ===
 chmod 444 "$STARGATE_CONFIG"
 
 echo "[STARGATE] Config generated at $STARGATE_CONFIG"
