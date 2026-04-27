@@ -292,6 +292,11 @@ reason = "System info queries (read-only)."
 commands = ["mkdir", "touch"]
 reason = "Directory and file creation."
 
+[[rules.green]]
+command = "bash"
+flags = ["-n"]
+reason = "Syntax check only — parses but does not execute."
+
 # --- Scope-bound rules ---
 
 [[rules.green]]
