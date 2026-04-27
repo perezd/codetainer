@@ -190,8 +190,8 @@ Container builds are manual. Never build or push Docker images.
 5. Apply iptables (network isolation, with Grafana host if set)
 6. Configure git/gh/npm auth (credential setup)
 7. Write OTEL env file (if Grafana credentials set)
-8. Generate Stargate config, copy and lock Claude settings (root-owned, immutable hooks)
-9. Start Stargate server (command control — de-privileged, fail-closed)
+8. Generate Stargate config, copy Claude settings
+9. Start Stargate server (command control — de-privileged, hooks fail-closed at invocation)
 10. Remount rootfs read-only
 11. Clone repo
 12. Readiness checks (CoreDNS, iptables, Stargate, settings, repo)
