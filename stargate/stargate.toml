@@ -259,6 +259,11 @@ subcommands = ["test", "run", "build", "init"]
 reason = "Safe bun subcommands."
 
 [[rules.green]]
+command = "bunx"
+pattern = '^bunx\s+prettier\s'
+reason = "Prettier formatting via bunx."
+
+[[rules.green]]
 commands = ["tsc", "tsx"]
 reason = "TypeScript compiler and runner."
 
