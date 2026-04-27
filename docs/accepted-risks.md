@@ -67,6 +67,24 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Severity:** Medium
 - **Date identified:** 2026-04-09 (identified during panel review of Go support design)
 
+### Autonomous code modification via Copilot hallucination
+
+- **Affected layer:** Container Hardening, Command Control
+- **Description:** The `/copilot-review` skill autonomously evaluates Copilot review findings, fixes code, and pushes up to 50 cycles without human intervention. If Copilot suggests a security-weakening change and Claude's evaluation agrees, the fix is autonomously pushed.
+- **Why it can't be resolved:** Requiring human approval per cycle defeats the automation purpose. The skill is designed for fully autonomous operation.
+- **Compensating controls:** The `/receiving-code-review` invocation explicitly frames Copilot content as untrusted user input with prompt injection warning. Stargate command control blocks dangerous operations at the shell level. 50-cycle iteration cap and 8-hour wall-clock timeout bound blast radius. Full git history preserves reversibility of all commits.
+- **Severity:** Medium
+- **Date identified:** 2026-04-27 (identified during panel review of #77)
+
+### Automated thread resolution audit gap
+
+- **Affected layer:** Container Hardening
+- **Description:** Review threads resolved by the `/copilot-review` skill cannot be distinguished from human-resolved threads in GitHub's UI filtering.
+- **Why it can't be resolved:** GitHub's API does not support metadata tagging on thread resolutions that would allow filtering by resolution source.
+- **Compensating controls:** Full API activity is recorded in GitHub's audit log. Git history preserves all commits associated with automated fixes. Thread replies document the reasoning for each resolution.
+- **Severity:** Low
+- **Date identified:** 2026-04-27 (identified during panel review of #77)
+
 ---
 
 ## Resolved Risks
