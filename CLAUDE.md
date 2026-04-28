@@ -52,7 +52,7 @@ Before the panel convenes, the design must explicitly address each of the follow
 
 Responses must cite **specific artifacts** — file paths, permission modes, code locations, data sources, and actor identities. Answers consisting only of "No" or "N/A" without justification will be returned for revision. If a question is genuinely not applicable to the change, state "N/A" with a one-line justification.
 
-Checklist responses are recorded in the design artifact (the issue design comment per Issue-Driven Workflow, or the PR description for changes not tied to an issue).
+Checklist responses are recorded in the design artifact (the issue design comment per `/issue-driven-workflow`, or the PR description for changes not tied to an issue).
 
 - **Trust anchor mutability:** Is any data source this design relies on writable at runtime? By whom? Through what mechanisms (direct file edit, command, env var, config include)? (Prevents mutable trust anchors — #36 lesson)
 - **File and output visibility:** Who can read files this design creates or modifies? Could their contents contain credentials, tokens, or other secrets? Trace the origin of every value written to files, logs, stdout, or network — could any upstream source (env vars, config files, user input, API responses) inject sensitive material? (Prevents credential leaks via world-readable files — #36 lesson)
@@ -78,81 +78,6 @@ The panel is not a rubber stamp. Genuinely reason from each expert's perspective
 
 ---
 
-## Git Workflow
-
-### Session Initialization
-
-Before beginning any task, complete these initialization steps in order:
-
-1. **Sync with upstream** — First, switch to `main` (`git switch main`). If switching fails (e.g., `main` is checked out in another worktree), do not run `git pull` from the current branch — use `git fetch origin main` instead and proceed. Once on `main`, detect whether the repo is a fork: extract the origin remote's `owner/repo` from `git remote get-url origin`, then run `gh repo view <origin-owner/repo> --json isFork,parent` (the repo must be specified explicitly — without it, `gh` resolves forks to the parent repo and `isFork` is always `false`). If it is a fork, sync main with upstream: `gh repo sync <fork-owner>/<fork-repo> --source <parent-owner>/<parent-repo> --branch main`, then `git pull origin main`. Lastly, ensure the fork's origin main branch is pushed and synced with the upstream main branch at GitHub. If the repo is not a fork, run `git pull origin main` to ensure the local checkout is current with its remote. If any step fails, warn the user and proceed — do not block the task.
-
-All work — whether writing code, answering questions, or reviewing files — should be based on the latest upstream state. This is a best-effort step that runs from the main branch before any worktree is created.
-
-### Worktree-First Development
-
-All changes happen in git worktrees, never directly on main. Each worktree gets a descriptive branch name reflecting the change.
-
-**Subagent working directory discipline:** When dispatching subagents (implementation agents, panel review experts, or any Agent tool invocation that will modify files or commit):
-
-1. **Include the worktree absolute path** in every subagent task description. Subagents start with a fresh context and default to the repo root — they will commit to main unless explicitly directed elsewhere.
-2. **Require CWD verification before commits.** The subagent must confirm its working directory matches the intended worktree path before staging or committing any changes.
-3. **Consider `isolation: "worktree"`** on the Agent tool as an alternative. This gives each subagent its own isolated worktree and branch, preventing accidental commits to main. Use this when subagents work on independent tasks that don't need to build on each other's changes in a shared branch. Use a shared worktree (items 1–2) when subagents must coordinate sequential work on the same branch.
-
-### PR-Based Integration
-
-Every change goes through a pull request — no direct commits to main. PR descriptions must include:
-
-- Summary of the change
-- Layer-impact assessment
-- Panel review output with final sign-off (if applicable)
-- Test plan
-
-### Fork-Aware PRs
-
-Before creating a PR, detect whether the repo is a fork with an upstream parent:
-
-1. Extract the origin remote's `owner/repo` from `git remote get-url origin`, then run `gh repo view <origin-owner/repo> --json isFork,parent` to check. The repo must be specified explicitly — without it, `gh` resolves forks to the parent repo and `isFork` is always `false`.
-2. If the repo **is a fork** (i.e., `isFork` is true and `parent` exists), target the upstream parent repo. Use `gh pr create --repo <parent-owner>/<parent-repo>` so the PR is sent upstream.
-3. If the repo **is not a fork**, create the PR against the local remote origin as usual.
-
-This ensures contributions flow to the correct repository without manual intervention.
-
-### Syncing a Fork After Merge
-
-After a PR is merged upstream, sync the fork's main branch to pick up the merged changes:
-
-1. Sync via the GitHub API: `gh repo sync <fork-owner>/<fork-repo> --source <parent-owner>/<parent-repo> --branch main`
-2. Pull locally: `git pull origin main`
-
-This must be done after each upstream merge to keep the fork and local checkout current.
-
-### PR Lifecycle
-
-After creating a PR, invoke `/copilot-review` to run the automated Copilot review loop. For human reviewer feedback, use `/receiving-code-review` before implementing suggestions. Never abandon a PR — see it through to resolution.
-
-After every push to a PR branch, review the current PR description (summary, layer-impact assessment, security design checklist, test plan) against the totality of changes in the PR. If any section no longer accurately reflects the implementation, update the PR description in the same operation — do not defer description updates to a later step.
-
-### Conventional Commits
-
-All commit messages follow the conventional commits standard:
-
-- Format: `type(scope): description`
-- Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`
-- Scope references the affected layer or component when relevant:
-  - `feat(docker): add new system package`
-  - `fix(network): add missing domain to allowlist`
-  - `refactor(entrypoint): reorder boot sequence`
-  - `docs: update accepted risks registry`
-- Describe the "why" not just the "what."
-
-### Formatting
-
-Run `bunx prettier --write "**/*.{ts,md}"` on all TypeScript and Markdown files before committing. Run `bunx prettier --check "**/*.{ts,md}"` to verify.
-
-When dispatching subagents that modify TypeScript or Markdown files, include an explicit `bunx prettier --check "**/*.{ts,md}"` step in the task description. The check must cover all modified files — not just the primary target — and run after implementation, before the subagent reports completion.
-
----
-
 ## Accepted Risks
 
 Unresolvable risks identified by the panel are tracked in `docs/accepted-risks.md`. See that file for the registry format and current entries. Never silently delete a risk — mark it as resolved with a date and reference to the resolving PR.
@@ -160,6 +85,14 @@ Unresolvable risks identified by the panel are tracked in `docs/accepted-risks.m
 ---
 
 ## Project Reference
+
+### Policy Source Reference
+
+Behavioral policies are distributed across three locations. Auditors and reviewers should consult all three to understand the full rule set:
+
+1. **User-level `~/.claude/CLAUDE.md`** — Universal behavioral policies (required skills, git workflow, CLI practices, conventional commits, formatting). Source: `user-claude-md/CLAUDE.md` in this repo, copied at boot.
+2. **Repo `CLAUDE.md`** (this file) — Project-specific configuration (security model, panel composition, design checklist).
+3. **Skills** — Procedural workflows (e.g., `issue-driven-workflow`, `copilot-review`). Source: `skills/` in this repo, copied at boot.
 
 ### Commands
 
@@ -175,6 +108,7 @@ Container builds are manual. Never build or push Docker images.
 - `network/` — Network isolation (domain allowlist, CoreDNS config, iptables refresh).
 - `scripts/` — Runtime scripts (entrypoint/PID 1, SSH handler, session namer, status line).
 - `skills/` — User-scoped Claude Code skills (copied to `/home/claude/.claude/skills/` at boot).
+- `user-claude-md/` — User-level CLAUDE.md (universal behavioral policies, copied to `~/.claude/CLAUDE.md` at boot).
 - `Dockerfile` — Multi-stage container build (Debian bookworm-slim).
 - `claude-settings.json` — Claude Code runtime config (model, hooks, plugins, status line).
 
@@ -194,7 +128,7 @@ Container builds are manual. Never build or push Docker images.
 10. Remount rootfs read-only
 11. Clone repo
 12. Readiness checks (CoreDNS, iptables, Stargate, settings, repo)
-13. Start Claude Code — invoke `start-claude.sh` in background (flock-synchronized)
+13. Start Claude Code — invoke `start-claude.sh` in background (flock-synchronized, installs plugins/skills/user-level CLAUDE.md before launching)
 
 Plugins are installed by `start-claude.sh` at boot (after marketplace initialization).
 OTEL env vars are written to `/tmp/otel/otel-env` (root-only directory, mode 700) by the entrypoint and forwarded through `sudo` by `start-claude.sh` using a key whitelist.
@@ -209,81 +143,3 @@ This order matters. Filesystem hardening before network setup. Network setup bef
 
 - Network changes must be validated against the domain allowlist.
 - Script changes must work under the read-only rootfs constraint.
-
----
-
-## Required Skills
-
-These superpowers skills are mandatory process gates — not optional.
-
-| Trigger                                                                  | Skill                             |
-| ------------------------------------------------------------------------ | --------------------------------- |
-| Starting any new feature, design, or creative work — no matter how small | `/brainstorming`                  |
-| Receiving PR review comments or code review feedback                     | `/receiving-code-review`          |
-| Encountering any bug, test failure, or unexpected behavior               | `/systematic-debugging`           |
-| Implementation plan is ready to execute                                  | `/executing-plans`                |
-| About to claim work is complete, fixed, or passing                       | `/verification-before-completion` |
-| Implementation is complete and ready to integrate                        | `/finishing-a-development-branch` |
-| Completing a task or major feature                                       | `/requesting-code-review`         |
-| After creating a PR                                                      | `/copilot-review`                 |
-
-**Workflow order:** `/brainstorming` → `/writing-plans` → `/executing-plans` → `/verification-before-completion` → `/requesting-code-review` → `/finishing-a-development-branch` → `/copilot-review`.
-
-`/systematic-debugging` and `/receiving-code-review` are reactive — invoke when their triggers occur at any point.
-
-### Skill Overrides
-
-**`/executing-plans`:** Always use `superpowers:subagent-driven-development` instead of the base executing-plans skill. Skip the selection prompt — subagent-driven development is the default execution strategy. Only deviate if the user has explicitly instructed otherwise in advance.
-
-**`/finishing-a-development-branch`:** Always default to "Push and create a Pull Request" (Option 2) without presenting the interactive prompt. This aligns with the project's PR-based integration model — all changes go through pull requests. Only deviate from this default if the user has explicitly instructed otherwise in advance.
-
-### Issue-Driven Workflow Gate
-
-When an explicit issue reference is active (see Issue-Driven Workflow), evaluate these overrides **before invoking any skill**. These take precedence over skill-default behaviors per the instruction priority chain (CLAUDE.md > skills > system prompt).
-
-1. **Bug triage order** — If the issue is a bug, regression, or report of unexpected behavior (by label or description), invoke `/systematic-debugging` before proceeding with `/brainstorming` and `/writing-plans`. Do not skip this even if the fix seems obvious.
-2. **Artifact routing** — Design specs and implementation plans are posted as comments on the originating issue, not written to local files. Skill defaults for file output paths (`docs/superpowers/specs/`, `docs/superpowers/plans/`) do not apply. See Issue-Driven Workflow § Artifact Routing.
-3. **Panel review gate** — The design comment must complete full panel review with all experts signing off before being posted to the issue. See Issue-Driven Workflow § Comment Sequence.
-
----
-
-## Issue-Driven Workflow
-
-When Claude is explicitly given a GitHub issue URL or reference (e.g., `#24`, `owner/repo#24`, or a full URL), the following workflow overrides apply. Do not infer an originating issue from branch names, commit messages, or other indirect context — activation requires an explicit reference.
-
-### Bug Triage
-
-When an issue is a bug, regression, or report of unexpected behavior — whether indicated by GitHub labels (e.g., `bug`, `regression`) or by the issue description — invoke `/systematic-debugging` before proceeding with `/brainstorming` and `/writing-plans`. Identify the root cause first, then design the fix. When it is unclear whether an issue is a bug or a feature request, default to treating it as a bug — it is lower cost to debug unnecessarily than to skip root-cause analysis on a real defect.
-
-### Artifact Routing
-
-All design specs and implementation plans produced by the brainstorming and writing-plans skills are posted as **comments on the originating GitHub issue** instead of being written to local files. No spec or plan files are created in `docs/`. The same skills run in the same order with the same rigor — only the output destination changes.
-
-### Comment Sequence
-
-The issue accumulates comments in this order:
-
-1. **Design comment** — The full panel review process (see Modification Protocol) **must complete with all experts signing off before this comment is posted**. Run multiple rounds if needed until the panel approves without concerns. The design comment must represent a vetted consensus, not a draft. Once posted, it is a stable artifact and should not need frequent updates.
-2. **Implementation plan comment** — Uses Markdown checkboxes (`- [ ]` / `- [x]`). As tasks are completed during execution, Claude edits this comment via `gh api` to mark items done, providing real-time progress visibility on the issue.
-3. **Supplemental comments** (only if needed) — If significant design issues are discovered during execution, post a new comment explaining what deviated and why. The original design comment is preserved as a historical record; deviations are made explicit rather than silently rewritten.
-4. **After-Action Report (AAR)** — Posted after all associated PRs are merged to main. This is the final action taken on the issue. Required sections:
-   - What went well?
-   - What went wrong?
-   - What was learned?
-   - What should happen differently next time?
-
-### PR Linkage
-
-PR bodies must include `Closes #N` (or equivalent GitHub closing keyword) so the issue is automatically closed when the PR merges to main.
-
-### CLI Best Practices
-
-Never pass arbitrary text content inline on a `gh` command line. Inline `--body` strings, `-F field=value` arguments, and heredoc constructs containing special characters are fragile and error-prone. The goal is to keep user-authored text out of the command string by any means necessary.
-
-**Always:** Write content to a temp file first (using the Write tool), then reference it from the `gh` command in a **separate** Bash invocation. Use whichever mechanism fits the command:
-
-- `--body-file /tmp/body.md` — `gh issue comment`, `gh pr create`, `gh pr edit`, etc.
-- `--input /tmp/payload.json` — `gh api` calls
-- `--body "$(cat /tmp/body.md)"` — fallback for any command that lacks a file flag
-
-These can be combined as needed. The only rule is: no literal text in the command string.
