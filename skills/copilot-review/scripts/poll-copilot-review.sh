@@ -17,8 +17,8 @@ STALE_REVIEW_ID="${3:-}"
 [[ "$OWNER_REPO" == */* ]] || { echo "owner/repo must contain a slash, got: $OWNER_REPO" >&2; exit 1; }
 [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "PR number must be numeric, got: $PR_NUMBER" >&2; exit 1; }
 
-MAX_POLLS=30
-POLL_INTERVAL=60
+MAX_POLLS=15
+POLL_INTERVAL=30
 RATE_LIMIT_CONSECUTIVE=0
 RATE_LIMIT_MAX=3
 
