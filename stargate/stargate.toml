@@ -302,6 +302,12 @@ command = "bash"
 flags = ["-n"]
 reason = "Syntax check only — parses but does not execute."
 
+# --- Skill scripts ---
+
+[[rules.green]]
+pattern = '^/home/claude/\.claude/skills/copilot-review/scripts/poll-copilot-review\.sh\s'
+reason = "Copilot review polling script — part of the copilot-review skill."
+
 # --- Scope-bound rules ---
 
 [[rules.green]]
