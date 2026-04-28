@@ -125,9 +125,12 @@ fi
 
 # --- Install skills (copy from image to user-scoped location) ---
 if [[ -d /opt/claude/skills ]]; then
-  cp -r /opt/claude/skills "$CLAUDE_HOME/.claude/skills"
-  chown -R claude:claude "$CLAUDE_HOME/.claude/skills"
-  echo "Installed skills to $CLAUDE_HOME/.claude/skills"
+  if cp -r /opt/claude/skills "$CLAUDE_HOME/.claude/skills" \
+    && chown -R claude:claude "$CLAUDE_HOME/.claude/skills"; then
+    echo "Installed skills to $CLAUDE_HOME/.claude/skills"
+  else
+    echo "WARNING: Skills installation failed" >&2
+  fi
 fi
 
 # --- Redirect to log file before tmux (tee process substitution would interfere with TUI) ---
