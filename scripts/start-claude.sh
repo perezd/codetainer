@@ -141,6 +141,7 @@ fi
 # the cp to an unintended target while running as root.
 CLAUDE_MD_TARGET="$CLAUDE_HOME/.claude/CLAUDE.md"
 CLAUDE_MD_TMP="$CLAUDE_HOME/.claude/.CLAUDE.md.tmp.$$"
+[[ -d "$CLAUDE_MD_TARGET" ]] && rm -rf "$CLAUDE_MD_TARGET"
 cp /opt/claude/user-claude-md/CLAUDE.md "$CLAUDE_MD_TMP" \
   && chown claude:claude "$CLAUDE_MD_TMP" \
   && chmod 444 "$CLAUDE_MD_TMP" \
