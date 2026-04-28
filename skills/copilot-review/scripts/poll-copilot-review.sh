@@ -79,14 +79,15 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
     }' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \
     --jq '.data.repository.pullRequest.reviewThreads.totalCount' \
     2>&1) || {
-      echo "GraphQL error: $THREAD_COUNT" >&2
-      echo "ERROR:GraphQL query failed"
+      GRAPHQL_ERROR_SINGLE_LINE=$(printf '%s' "$THREAD_COUNT" | tr '\r\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
+      echo "GraphQL error: $GRAPHQL_ERROR_SINGLE_LINE" >&2
+      echo "ERROR:${GRAPHQL_ERROR_SINGLE_LINE}"
       exit 0
     }
 
   if ! [[ "$THREAD_COUNT" =~ ^[0-9]+$ ]]; then
     echo "Unexpected thread count: $THREAD_COUNT" >&2
-    echo "ERROR:Non-numeric thread count"
+    echo "ERROR:Non-numeric thread count: ${THREAD_COUNT}"
     exit 0
   fi
 

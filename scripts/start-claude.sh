@@ -125,7 +125,7 @@ fi
 
 # --- Install skills (copy from image to user-scoped location) ---
 if [[ -d /opt/claude/skills ]]; then
-  if [[ -L "$CLAUDE_HOME/.claude/skills" ]]; then
+  if [[ -L "$CLAUDE_HOME/.claude" || -L "$CLAUDE_HOME/.claude/skills" ]]; then
     echo "ERROR: Refusing to install skills into symlinked path" >&2
     exit 1
   fi
