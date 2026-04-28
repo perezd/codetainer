@@ -101,7 +101,7 @@ Wait for the background task completion notification.
 
 ### 4. Fetch Unresolved Threads
 
-Query unresolved review threads via GraphQL (paginated, cap 10 pages / 1000 threads). Report overflow if exceeded.
+Query all review threads via GraphQL (paginated, cap 10 pages / 1000 threads). Filter to unresolved threads client-side (`isResolved == false`). Report overflow if exceeded.
 
 ```bash
 gh api graphql --paginate -f query='

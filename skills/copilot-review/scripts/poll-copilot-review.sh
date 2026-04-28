@@ -67,23 +67,31 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
 
   # Thread count includes all reviewers, not just Copilot — by design, since the
   # skill runs before human review and should address all unresolved threads.
-  THREAD_COUNT=$(gh api graphql -f query='
-    query($owner: String!, $repo: String!, $pr: Int!) {
+  # Paginate to avoid undercounting when >100 threads exist.
+  THREAD_OUTPUT=$(gh api graphql --paginate -f query='
+    query($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $pr) {
-          reviewThreads(first: 100) {
+          reviewThreads(first: 100, after: $endCursor) {
+            pageInfo { hasNextPage endCursor }
             nodes { isResolved }
           }
         }
       }
     }' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \
     --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' \
-    2>&1) || {
-      GRAPHQL_ERROR_SINGLE_LINE=$(printf '%s' "$THREAD_COUNT" | tr '\r\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
+    2>"$STDERR_FILE") || {
+      STDERR=$(cat "$STDERR_FILE" 2>/dev/null)
+      GRAPHQL_ERROR_SINGLE_LINE=$(printf '%s' "$STDERR" | tr '\r\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
       echo "GraphQL error: $GRAPHQL_ERROR_SINGLE_LINE" >&2
       echo "ERROR:${GRAPHQL_ERROR_SINGLE_LINE}"
       exit 0
     }
+  # --paginate emits one number per page; sum them
+  THREAD_COUNT=0
+  while IFS= read -r n; do
+    [[ "$n" =~ ^[0-9]+$ ]] && THREAD_COUNT=$((THREAD_COUNT + n))
+  done <<< "$THREAD_OUTPUT"
 
   if ! [[ "$THREAD_COUNT" =~ ^[0-9]+$ ]]; then
     echo "Unexpected thread count: $THREAD_COUNT" >&2
