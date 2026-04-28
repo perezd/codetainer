@@ -162,7 +162,8 @@ RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh /opt
 
 # Copilot review skill (user-scoped, copied to claude's home at boot)
 COPY skills/ /opt/claude/skills/
-RUN chmod +x /opt/claude/skills/copilot-review/scripts/poll-copilot-review.sh
+RUN chmod +x /opt/claude/skills/copilot-review/scripts/poll-copilot-review.sh \
+    /opt/claude/skills/copilot-review/scripts/get-owner-repo.sh
 
 # Status tool
 COPY scripts/status.sh /usr/local/bin/status
