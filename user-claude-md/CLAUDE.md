@@ -110,7 +110,7 @@ When dispatching subagents that modify TypeScript or Markdown files, include an 
 
 ## Issue-Driven Workflow Gate
 
-When a GitHub issue URL or reference is present (e.g., `#24`, `owner/repo#24`, or a full URL), invoke the `/issue-driven-workflow` skill. Do not infer an originating issue from branch names, commit messages, or other indirect context — activation requires an explicit reference.
+When the user provides a full GitHub issue URL, or a shorthand issue reference (e.g., `#24`, `owner/repo#24`) with explicit context confirming it is the work target, invoke the `/issue-driven-workflow` skill. Do not infer an originating issue from branch names, commit messages, or other indirect context. An issue number mentioned only as background or comparison is not sufficient to activate the skill.
 
 Evaluate these overrides **before invoking any skill**. These take precedence over skill-default behaviors per the instruction priority chain (CLAUDE.md > skills > system prompt).
 

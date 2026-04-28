@@ -134,9 +134,11 @@ if [[ -d /opt/claude/skills ]]; then
 fi
 
 # --- Install user-level CLAUDE.md (universal behavioral policies) ---
-# Fail-closed: abort boot if policy file cannot be installed — VMs are ephemeral.
+# Fail-closed: exit 1 kills this background process before tmux/Claude start.
+# The exclusive flock (fd 9) is never released, so attach-claude.sh blocks forever.
 CLAUDE_MD_TARGET="$CLAUDE_HOME/.claude/CLAUDE.md"
 [[ -L "$CLAUDE_MD_TARGET" ]] && rm -f "$CLAUDE_MD_TARGET"
+[[ -d "$CLAUDE_MD_TARGET" ]] && rm -rf "$CLAUDE_MD_TARGET"
 cp /opt/claude/user-claude-md/CLAUDE.md "$CLAUDE_MD_TARGET" \
   && chown claude:claude "$CLAUDE_MD_TARGET" \
   && chmod 444 "$CLAUDE_MD_TARGET" \
