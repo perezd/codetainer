@@ -56,7 +56,7 @@ digraph copilot_review {
 1. Determine `owner/repo`:
 
    ```bash
-   OWNER_REPO=$(git remote get-url origin | sed -E 's#.*[:/]([^/]+/[^/.]+)(\.git)?$#\1#')
+   OWNER_REPO=$(/home/claude/.claude/skills/copilot-review/scripts/get-owner-repo.sh)
    ```
 
 2. Determine PR number:
