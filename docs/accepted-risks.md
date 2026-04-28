@@ -85,6 +85,42 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Severity:** Low
 - **Date identified:** 2026-04-27 (identified during panel review of #77)
 
+### Subagent capability bounds
+
+- **Affected layer:** Container Hardening, Command Control
+- **Description:** All subagents (panel review experts, implementation agents) run with full session credentials (GH_PAT, CLAUDE_CODE_OAUTH_TOKEN). A compromised subagent (e.g., via prompt injection from issue content) could use `gh api` to post, read, or modify GitHub resources within the Stargate scope.
+- **Why it can't be resolved:** Claude Code subagents inherit the parent session's environment. Capability restriction per-subagent is not supported by the Claude Code architecture.
+- **Compensating controls:** The `/issue-driven-workflow` skill frames issue content as untrusted input with structural separation in subagent prompts. Subagent output is verified for plausibility before the orchestrating agent acts on it. Stargate scope-bounds `gh` commands to `github_owners`, limiting the blast radius.
+- **Severity:** Medium
+- **Date identified:** 2026-04-28 (identified during panel review of #78)
+
+### LLM behavioral policy compliance
+
+- **Affected layer:** Container Hardening
+- **Description:** User-level CLAUDE.md and repo CLAUDE.md are LLM-enforced behavioral policy. While file delivery is fail-closed (boot aborts if copy fails), the LLM may ignore instructions at runtime. Behavioral gates (panel review, skill invocation) depend on LLM compliance, unlike Stargate hooks which are code-enforced and fail-closed.
+- **Why it can't be resolved:** CLAUDE.md is an instruction file interpreted by the LLM, not a code-enforced policy engine. No mechanism exists to guarantee LLM compliance with written instructions.
+- **Compensating controls:** Security layers (iptables, Stargate, container hardening) remain independently enforced regardless of CLAUDE.md compliance. Stargate is the code-enforced backstop for dangerous command execution.
+- **Severity:** Medium
+- **Date identified:** 2026-04-28 (identified during panel review of #78)
+
+### AAR enforceability
+
+- **Affected layer:** None (process quality, not security)
+- **Description:** The After-Action Report is the final comment on an issue after all PRs merge. GitHub does not prevent issue closure without an AAR — the `Closes #N` keyword auto-closes the issue on merge. No hook or gate enforces AAR posting.
+- **Why it can't be resolved:** GitHub has no mechanism to prevent issue closure conditionally. Adding a GitHub Action would require repo-level configuration that varies per project.
+- **Compensating controls:** Periodic review of closed issues without AAR comments to identify gaps. The AAR corpus informs process improvement (e.g., #36 AAR informed the security design checklist).
+- **Severity:** Low
+- **Date identified:** 2026-04-28 (identified during panel review of #78)
+
+### Information disclosure in public repo issue comments
+
+- **Affected layer:** None (information security)
+- **Description:** Design specs, implementation plans, and AARs posted to GitHub issues by the `/issue-driven-workflow` skill contain architectural details (security design decisions, file paths, permission modes, accepted weaknesses). For public repos, this is fully public.
+- **Why it can't be resolved:** Transparent issue-driven development inherently publishes design artifacts. Restricting content would defeat the purpose of using issues as the audit trail.
+- **Compensating controls:** The content safety check in the skill prevents credential leakage (`ghp_`, `gho_`, `github_pat_` patterns). Security-sensitive details in the design checklist are already visible in the repo's CLAUDE.md. Network isolation and Stargate operate independently of published information.
+- **Severity:** Low
+- **Date identified:** 2026-04-28 (identified during panel review of #78)
+
 ---
 
 ## Resolved Risks
