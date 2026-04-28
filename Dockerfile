@@ -160,10 +160,13 @@ COPY scripts/session-namer.sh /opt/claude/session-namer.sh
 COPY scripts/sync-fork.sh /opt/claude/sync-fork.sh
 RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh /opt/claude/sync-fork.sh
 
-# Copilot review skill (user-scoped, copied to claude's home at boot)
+# Skills (user-scoped, copied to claude's home at boot)
 COPY skills/ /opt/claude/skills/
 RUN chmod +x /opt/claude/skills/copilot-review/scripts/poll-copilot-review.sh \
     /opt/claude/skills/copilot-review/scripts/get-owner-repo.sh
+
+# User-level CLAUDE.md (universal behavioral policies, copied to claude's home at boot)
+COPY user-claude-md/ /opt/claude/user-claude-md/
 
 # Status tool
 COPY scripts/status.sh /usr/local/bin/status
