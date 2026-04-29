@@ -124,6 +124,12 @@ Evaluate these overrides **before invoking any skill**. These take precedence ov
 
 ## CLI Best Practices
 
+### File Creation
+
+Use the Write tool (or Edit tool for modifications) for all file creation — never use bash heredocs, `cat`, `echo`, or `printf` to write file content. This includes temp files, `gh` command bodies, API payloads, and any other content. Reserve Bash for running commands, not writing files.
+
+### GitHub CLI
+
 Never pass arbitrary text content inline on a `gh` command line. Inline `--body` strings, `-F field=value` arguments, and heredoc constructs containing special characters are fragile and error-prone. The goal is to keep user-authored text out of the command string by any means necessary.
 
 **Always:** Write content to a temp file first (using the Write tool), then reference it from the `gh` command in a **separate** Bash invocation. Use whichever mechanism fits the command:
