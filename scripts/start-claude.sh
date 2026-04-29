@@ -136,11 +136,14 @@ fi
 # --- Install user-level CLAUDE.md (universal behavioral policies) ---
 # Fail-closed: exit 1 kills this process before tmux/Claude start. The flock on
 # fd 9 is released on exit, so attach-claude.sh proceeds but finds no tmux session.
-# Atomic install: write to temp file, set ownership/mode, then mv into place.
-# This avoids a TOCTOU window where a symlink at the destination could redirect
-# the cp to an unintended target while running as root.
-CLAUDE_MD_TARGET="$CLAUDE_HOME/.claude/CLAUDE.md"
-CLAUDE_MD_TMP="$CLAUDE_HOME/.claude/.CLAUDE.md.tmp.$$"
+# Atomic install: mktemp in /tmp (root-owned sticky-bit dir) to avoid predictable
+# paths in claude-writable directories, then mv into place.
+CLAUDE_CONFIG_DIR="$CLAUDE_HOME/.claude"
+CLAUDE_MD_TARGET="$CLAUDE_CONFIG_DIR/CLAUDE.md"
+[[ -L "$CLAUDE_CONFIG_DIR" ]] && { echo "FATAL: $CLAUDE_CONFIG_DIR must not be a symlink" >&2; exit 1; }
+[[ -d "$CLAUDE_CONFIG_DIR" ]] || { echo "FATAL: $CLAUDE_CONFIG_DIR must exist as a directory" >&2; exit 1; }
+CLAUDE_MD_TMP=$(mktemp /tmp/claude-md-install.XXXXXX) \
+  || { echo "FATAL: Failed to create temp file for user-level CLAUDE.md" >&2; exit 1; }
 [[ -d "$CLAUDE_MD_TARGET" ]] && rm -rf "$CLAUDE_MD_TARGET"
 cp /opt/claude/user-claude-md/CLAUDE.md "$CLAUDE_MD_TMP" \
   && chown claude:claude "$CLAUDE_MD_TMP" \
