@@ -136,21 +136,26 @@ fi
 # --- Install user-level CLAUDE.md (universal behavioral policies) ---
 # Fail-closed: exit 1 kills this process before tmux/Claude start. The flock on
 # fd 9 is released on exit, so attach-claude.sh proceeds but finds no tmux session.
-# Atomic install: mktemp in /tmp (root-owned sticky-bit dir) to avoid predictable
-# paths in claude-writable directories, then mv into place.
+# Runs as claude user to eliminate root-TOCTOU on the claude-owned destination dir.
+# Same-filesystem mktemp + mv = atomic rename (no cross-fs copy+unlink).
 CLAUDE_CONFIG_DIR="$CLAUDE_HOME/.claude"
 CLAUDE_MD_TARGET="$CLAUDE_CONFIG_DIR/CLAUDE.md"
-[[ -L "$CLAUDE_CONFIG_DIR" ]] && { echo "FATAL: $CLAUDE_CONFIG_DIR must not be a symlink" >&2; exit 1; }
-[[ -d "$CLAUDE_CONFIG_DIR" ]] || { echo "FATAL: $CLAUDE_CONFIG_DIR must exist as a directory" >&2; exit 1; }
-CLAUDE_MD_TMP=$(mktemp /tmp/claude-md-install.XXXXXX) \
-  || { echo "FATAL: Failed to create temp file for user-level CLAUDE.md" >&2; exit 1; }
-[[ -d "$CLAUDE_MD_TARGET" ]] && rm -rf "$CLAUDE_MD_TARGET"
-cp /opt/claude/user-claude-md/CLAUDE.md "$CLAUDE_MD_TMP" \
-  && chown claude:claude "$CLAUDE_MD_TMP" \
-  && chmod 444 "$CLAUDE_MD_TMP" \
-  && mv -f "$CLAUDE_MD_TMP" "$CLAUDE_MD_TARGET" \
-  && echo "Installed user-level CLAUDE.md to $CLAUDE_MD_TARGET" \
-  || { rm -f "$CLAUDE_MD_TMP" 2>/dev/null; echo "FATAL: Failed to install user-level CLAUDE.md — aborting" >&2; exit 1; }
+run_as_claude bash -c '
+  set -euo pipefail
+  config_dir="$1"; target="$2"; source="$3"
+  [[ ! -L "$config_dir" ]] || { echo "FATAL: $config_dir must not be a symlink" >&2; exit 1; }
+  [[ -d "$config_dir" ]] || { echo "FATAL: $config_dir must exist as a directory" >&2; exit 1; }
+  tmp=$(mktemp "$config_dir/.CLAUDE.md.tmp.XXXXXX") \
+    || { echo "FATAL: Failed to create temp file for user-level CLAUDE.md" >&2; exit 1; }
+  trap "rm -f \"$tmp\" 2>/dev/null || true" EXIT
+  [[ -d "$target" ]] && rm -rf "$target"
+  cp "$source" "$tmp"
+  chmod 444 "$tmp"
+  mv -f "$tmp" "$target"
+  trap - EXIT
+  echo "Installed user-level CLAUDE.md to $target"
+' bash "$CLAUDE_CONFIG_DIR" "$CLAUDE_MD_TARGET" /opt/claude/user-claude-md/CLAUDE.md \
+  || { echo "FATAL: Failed to install user-level CLAUDE.md — aborting" >&2; exit 1; }
 
 # --- Redirect to log file before tmux (tee process substitution would interfere with TUI) ---
 exec 1>>"$START_LOG" 2>&1
