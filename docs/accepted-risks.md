@@ -124,9 +124,9 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 ### User-controlled content from githubusercontent domains
 
 - **Affected layer:** Network Isolation, Container Hardening
-- **Description:** Three `*.githubusercontent.com` domains are allowlisted: `raw.githubusercontent.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`. All serve user-controlled content — any GitHub user can publish arbitrary files (source blobs, release binaries, raw file content) that can be downloaded into the container's writable tmpfs (`/workspace`, `/home/claude`, `/tmp`). `GH_PAT` is transmitted in request headers over HTTPS to these domains.
+- **Description:** Three specific subdomains of `githubusercontent.com` are individually allowlisted: `raw.githubusercontent.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`. All serve user-controlled content — any GitHub user can publish arbitrary files (source blobs, release binaries, raw file content) that can be downloaded into the container's writable tmpfs (`/workspace`, `/home/claude`, `/tmp`). `GH_PAT` is used for GitHub API authentication; downloads from these CDN domains typically use short-lived signed URLs obtained via API redirect rather than direct PAT transmission.
 - **Why it can't be resolved:** These domains are required for core GitHub workflows: raw file access, git object storage, and release asset downloads. Blocking them would break `gh`, `git clone`, and `gh release download`.
-- **Compensating controls:** Container runs as non-root UID 1000 with size-limited tmpfs (ephemeral, no persistence across sessions). Stargate command classification gates execution of downloaded content. TLS protects `GH_PAT` in transit. Network isolation limits where downloaded content or exfiltrated data can be sent.
+- **Compensating controls:** Container runs as non-root UID 1000 with size-limited tmpfs (ephemeral, no persistence across sessions). Stargate command classification gates execution of downloaded content. HTTPS/TLS protects all traffic in transit. Network isolation limits where downloaded content or exfiltrated data can be sent.
 - **Severity:** Medium
 - **Date identified:** 2026-04-29 (pre-existing risk, formally documented during panel review of #92)
 
