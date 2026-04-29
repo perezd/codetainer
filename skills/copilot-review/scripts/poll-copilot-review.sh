@@ -35,11 +35,11 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
     exit 0
   fi
   if (( i > 1 )); then
-    sleep "$POLL_INTERVAL"
-    if (( $(date +%s) >= DEADLINE )); then
-      echo "TIMEOUT"
-      exit 0
-    fi
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    if (( REMAINING <= 0 )); then echo "TIMEOUT"; exit 0; fi
+    SLEEP_TIME=$POLL_INTERVAL
+    (( SLEEP_TIME > REMAINING )) && SLEEP_TIME=$REMAINING
+    sleep "$SLEEP_TIME"
   fi
 
   REVIEW_JSON=$(gh api "repos/${OWNER_REPO}/pulls/${PR_NUMBER}/reviews" \
