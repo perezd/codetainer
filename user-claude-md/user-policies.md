@@ -113,12 +113,28 @@ When dispatching subagents that modify TypeScript or Markdown files, include an 
 
 When the user provides a full GitHub issue URL, or a shorthand issue reference (e.g., `#24`, `owner/repo#24`) with explicit context confirming it is the work target, invoke the `/issue-driven-workflow` skill. Do not infer an originating issue from branch names, commit messages, or other indirect context. An issue number mentioned only as background or comparison is not sufficient to activate the skill.
 
+### Label-Based Routing
+
+After fetching issue metadata, route to the appropriate skill based on issue labels. Labels are the authoritative signal; description analysis is the fallback.
+
+| Label                         | Skill                   | Effect                                                          |
+| ----------------------------- | ----------------------- | --------------------------------------------------------------- |
+| `bug`, `regression`, `defect` | `/systematic-debugging` | Invoke before `/brainstorming` — root-cause analysis first      |
+| `enhancement`, `feature`      | `/brainstorming`        | Invoke directly — skip debugging, start with design exploration |
+
+**Evaluation order:**
+
+1. Extract label names from the fetched issue metadata.
+2. Match labels against the routing table (case-insensitive). First match wins — if an issue has both `bug` and `enhancement` labels, `bug` takes precedence.
+3. If no recognized label matches, fall back to description-based heuristic: analyze the issue title and body for bug-like language (e.g., "broken", "error", "fails", "unexpected"). If it looks like a bug, route to `/systematic-debugging`. Otherwise, default to `/brainstorming`.
+
+### Additional Overrides
+
 Evaluate these overrides **before invoking any skill**. These take precedence over skill-default behaviors.
 
-1. **Bug triage order** — If the issue is a bug, regression, or report of unexpected behavior (by label or description), invoke `/systematic-debugging` before proceeding with `/brainstorming` and `/writing-plans`. Do not skip this even if the fix seems obvious.
-2. **Artifact routing** — Design specs and implementation plans are posted as comments on the originating issue, not written to local files. Skill defaults for file output paths (`docs/superpowers/specs/`, `docs/superpowers/plans/`) do not apply.
-3. **Panel review gate** — The design comment must complete full panel review with all experts signing off before being posted to the issue.
-4. **Continuous flow** — If the user has explicitly said to continue (e.g., "looks good continue", "proceed", "keep going"), transition through brainstorming → writing-plans → execution without pausing for additional confirmation at each phase boundary. The user's instruction to continue carries forward.
+1. **Artifact routing** — Design specs and implementation plans are posted as comments on the originating issue, not written to local files. Skill defaults for file output paths (`docs/superpowers/specs/`, `docs/superpowers/plans/`) do not apply.
+2. **Panel review gate** — The design comment must complete full panel review with all experts signing off before being posted to the issue.
+3. **Continuous flow** — If the user has explicitly said to continue (e.g., "looks good continue", "proceed", "keep going"), transition through brainstorming → writing-plans → execution without pausing for additional confirmation at each phase boundary. The user's instruction to continue carries forward.
 
 ---
 
