@@ -154,7 +154,7 @@ run_as_claude bash -c '
   mv -f "$tmp" "$target"
   trap - EXIT
   echo "Installed user-level CLAUDE.md to $target"
-' bash "$CLAUDE_CONFIG_DIR" "$CLAUDE_MD_TARGET" /opt/claude/user-claude-md/CLAUDE.md \
+' bash "$CLAUDE_CONFIG_DIR" "$CLAUDE_MD_TARGET" /opt/claude/user-claude-md/user-policies.md \
   || { echo "FATAL: Failed to install user-level CLAUDE.md — aborting" >&2; exit 1; }
 
 # --- Redirect to log file before tmux (tee process substitution would interfere with TUI) ---

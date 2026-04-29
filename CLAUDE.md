@@ -90,7 +90,7 @@ Unresolvable risks identified by the panel are tracked in `docs/accepted-risks.m
 
 Behavioral policies are distributed across three locations. Auditors and reviewers should consult all three to understand the full rule set:
 
-1. **User-level `~/.claude/CLAUDE.md`** — Universal behavioral policies (required skills, git workflow, CLI practices, conventional commits, formatting). Source: `user-claude-md/CLAUDE.md` in this repo, copied at boot.
+1. **User-level `~/.claude/CLAUDE.md`** — Universal behavioral policies (required skills, git workflow, CLI practices, conventional commits, formatting). Source: `user-claude-md/user-policies.md` in this repo, renamed to `CLAUDE.md` at boot.
 2. **Repo `CLAUDE.md`** (this file) — Project-specific configuration (security model, panel composition, design checklist).
 3. **Skills** — Procedural workflows (e.g., `issue-driven-workflow`, `copilot-review`). Source: `skills/` in this repo, copied at boot.
 
