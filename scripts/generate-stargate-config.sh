@@ -66,8 +66,10 @@ fi
 
 # Patch service_name from FLY_APP_NAME (for per-app telemetry grouping)
 if [[ -n "${FLY_APP_NAME:-}" ]]; then
-    if [[ "${FLY_APP_NAME}" =~ ^[a-z0-9-]+$ ]]; then
-        sed -i "s|^service_name = .*|service_name = \"${FLY_APP_NAME}\"|" "$STARGATE_CONFIG"
+    if [[ "${FLY_APP_NAME}" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+        sed -i '/^\[telemetry\]/,/^$/{
+            s|^service_name = .*|service_name = "'"${FLY_APP_NAME}"'"|
+        }' "$STARGATE_CONFIG"
     else
         echo "[STARGATE] WARN: FLY_APP_NAME failed validation, using default service_name" >&2
     fi
