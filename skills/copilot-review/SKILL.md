@@ -49,7 +49,7 @@ digraph copilot_review {
     timeout_query -> fetch [label="> 0"];
     timeout_query -> timeout_converge [label="0"];
     timeout_converge -> done_clean [label="yes"];
-    timeout_converge -> request [label="no — loop"];
+    timeout_converge -> guard [label="no"];
     fetch -> process;
     process -> push;
     push -> resolve;
@@ -193,8 +193,8 @@ If the description is stale, write the updated description to a temp file and up
 
 ### 9. Loop Control
 
-- Set `STALE_REVIEW_ID` to current review ID
-- Reset consecutive timeout counter to 0
+- Set `STALE_REVIEW_ID` to current review ID (on TIMEOUT, keep the previous value — the poller has no new review ID)
+- Reset `CONSECUTIVE_TIMEOUTS` to 0
 - Check 8-hour wall-clock timeout — stop if exceeded
 - Return to step 1
 
