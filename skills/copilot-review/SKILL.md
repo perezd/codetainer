@@ -28,7 +28,8 @@ digraph copilot_review {
     request [label="Request Copilot review" shape=box];
     poll [label="Poll for completion\n(background script)" shape=box];
     result [label="Poll result?" shape=diamond];
-    timeout_check [label="3 consecutive timeouts\nwith 0 unresolved?" shape=diamond];
+    timeout_query [label="Unresolved\nthreads?" shape=diamond];
+    timeout_converge [label="CONSECUTIVE_TIMEOUTS\n>= 3?" shape=diamond];
     fetch [label="Fetch unresolved threads" shape=box];
     process [label="Process findings\n(receiving-code-review)" shape=box];
     push [label="Push fixes" shape=box];
@@ -42,11 +43,13 @@ digraph copilot_review {
     request -> poll;
     poll -> result;
     result -> done_clean [label="REVIEW_CLEAN"];
-    result -> timeout_check [label="TIMEOUT"];
+    result -> timeout_query [label="TIMEOUT"];
     result -> done_stop [label="RATE_LIMITED\nERROR"];
     result -> fetch [label="REVIEW_COMPLETE"];
-    timeout_check -> done_clean [label="yes"];
-    timeout_check -> request [label="no — loop"];
+    timeout_query -> fetch [label="> 0"];
+    timeout_query -> timeout_converge [label="0"];
+    timeout_converge -> done_clean [label="yes"];
+    timeout_converge -> request [label="no — loop"];
     fetch -> process;
     process -> push;
     push -> resolve;
@@ -71,7 +74,7 @@ digraph copilot_review {
 
 3. Verify PAT scopes via `gh auth status` — requires `repo` scope. Stop if insufficient.
 
-4. Set `STALE_REVIEW_ID=""` and record `START_TIME` (epoch seconds) for 8-hour timeout.
+4. Set `STALE_REVIEW_ID=""`, `CONSECUTIVE_TIMEOUTS=0`, and record `START_TIME` (epoch seconds) for 8-hour timeout.
 
 ## Main Loop (max 50 cycles)
 
@@ -98,15 +101,15 @@ Continue with other work while polling. When the background task completion noti
 
 ### 3. Handle Poll Result
 
-| Output                         | Action                                           |
-| ------------------------------ | ------------------------------------------------ |
-| `REVIEW_CLEAN:<id>`            | Report PR clean, **stop (success)**              |
-| `TIMEOUT`                      | Check timeout convergence (see below), then loop |
-| `RATE_LIMITED`                 | Report rate limit, **stop**                      |
-| `ERROR:<msg>`                  | Report error, **stop (non-transient)**           |
-| `REVIEW_COMPLETE:<id>:<count>` | Reset timeout counter, continue to step 4        |
+| Output                         | Action                                                                       |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `REVIEW_CLEAN:<id>`            | Report PR clean, **stop (success)**                                          |
+| `TIMEOUT`                      | Query unresolved threads; if >0, continue to step 4; if 0, check convergence |
+| `RATE_LIMITED`                 | Report rate limit, **stop**                                                  |
+| `ERROR:<msg>`                  | Report error, **stop (non-transient)**                                       |
+| `REVIEW_COMPLETE:<id>:<count>` | Reset `CONSECUTIVE_TIMEOUTS` to 0, continue to step 4                        |
 
-**Timeout convergence:** Track consecutive timeouts. On each TIMEOUT, query unresolved thread count. If 0 unresolved threads for 3 consecutive timeouts, treat as converged — Copilot has no further findings. Report PR clean and stop. A REVIEW_COMPLETE result resets the consecutive timeout counter to 0.
+**Timeout convergence:** On each TIMEOUT, query unresolved thread count. If `unresolved > 0`, reset `CONSECUTIVE_TIMEOUTS` to 0 and continue to step 4 to process those threads. If `unresolved == 0`, increment `CONSECUTIVE_TIMEOUTS`. When `CONSECUTIVE_TIMEOUTS` reaches 3, treat as converged — Copilot has no further findings. Report PR clean and stop. A `REVIEW_COMPLETE` result also resets `CONSECUTIVE_TIMEOUTS` to 0.
 
 ### 4. Fetch Unresolved Threads
 
@@ -186,7 +189,7 @@ Check for:
 - Approach descriptions that no longer match the implementation (e.g., "mktemp in /tmp" when the code now uses a different directory)
 - Security checklist responses that reference superseded behavior
 
-If the description is stale, update it via `gh pr edit` before looping. This prevents description-only threads in subsequent cycles.
+If the description is stale, write the updated description to a temp file and update it with `gh pr edit --body-file <temp-file>` before looping. Do not pass the new description inline via `--body`. This prevents description-only threads in subsequent cycles.
 
 ### 9. Loop Control
 
