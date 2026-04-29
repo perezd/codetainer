@@ -28,10 +28,12 @@ digraph copilot_review {
     request [label="Request Copilot review" shape=box];
     poll [label="Poll for completion\n(background script)" shape=box];
     result [label="Poll result?" shape=diamond];
+    timeout_check [label="3 consecutive timeouts\nwith 0 unresolved?" shape=diamond];
     fetch [label="Fetch unresolved threads" shape=box];
     process [label="Process findings\n(receiving-code-review)" shape=box];
     push [label="Push fixes" shape=box];
     resolve [label="Reply & resolve threads" shape=box];
+    desc_audit [label="Audit PR description\nvs actual code" shape=box];
     guard [label="< 8h and\n< 50 cycles?" shape=diamond];
     done_clean [label="Done — PR clean" shape=doublecircle];
     done_stop [label="Stop — report to user" shape=doublecircle];
@@ -40,12 +42,16 @@ digraph copilot_review {
     request -> poll;
     poll -> result;
     result -> done_clean [label="REVIEW_CLEAN"];
-    result -> done_stop [label="TIMEOUT\nRATE_LIMITED\nERROR"];
+    result -> timeout_check [label="TIMEOUT"];
+    result -> done_stop [label="RATE_LIMITED\nERROR"];
     result -> fetch [label="REVIEW_COMPLETE"];
+    timeout_check -> done_clean [label="yes"];
+    timeout_check -> request [label="no — loop"];
     fetch -> process;
     process -> push;
     push -> resolve;
-    resolve -> guard;
+    resolve -> desc_audit;
+    desc_audit -> guard;
     guard -> request [label="yes"];
     guard -> done_stop [label="no"];
 }
@@ -92,13 +98,15 @@ Continue with other work while polling. When the background task completion noti
 
 ### 3. Handle Poll Result
 
-| Output                         | Action                                 |
-| ------------------------------ | -------------------------------------- |
-| `REVIEW_CLEAN:<id>`            | Report PR clean, **stop (success)**    |
-| `TIMEOUT`                      | Report timeout, **stop**               |
-| `RATE_LIMITED`                 | Report rate limit, **stop**            |
-| `ERROR:<msg>`                  | Report error, **stop (non-transient)** |
-| `REVIEW_COMPLETE:<id>:<count>` | Continue to step 4                     |
+| Output                         | Action                                           |
+| ------------------------------ | ------------------------------------------------ |
+| `REVIEW_CLEAN:<id>`            | Report PR clean, **stop (success)**              |
+| `TIMEOUT`                      | Check timeout convergence (see below), then loop |
+| `RATE_LIMITED`                 | Report rate limit, **stop**                      |
+| `ERROR:<msg>`                  | Report error, **stop (non-transient)**           |
+| `REVIEW_COMPLETE:<id>:<count>` | Reset timeout counter, continue to step 4        |
+
+**Timeout convergence:** Track consecutive timeouts. On each TIMEOUT, query unresolved thread count. If 0 unresolved threads for 3 consecutive timeouts, treat as converged — Copilot has no further findings. Report PR clean and stop. A REVIEW_COMPLETE result resets the consecutive timeout counter to 0.
 
 ### 4. Fetch Unresolved Threads
 
@@ -168,24 +176,38 @@ mutation($threadId: ID!) {
 }' -f threadId="{thread_id}"
 ```
 
-### 8. Loop Control
+### 8. Audit PR Description
+
+After resolving threads and before looping, verify the PR description still matches the code. Fixes during review often change the approach (e.g., file renames, different security strategy) while leaving stale claims in the description — Copilot will flag these in the next cycle, creating avoidable churn.
+
+Check for:
+
+- File paths that no longer exist or were renamed
+- Approach descriptions that no longer match the implementation (e.g., "mktemp in /tmp" when the code now uses a different directory)
+- Security checklist responses that reference superseded behavior
+
+If the description is stale, update it via `gh pr edit` before looping. This prevents description-only threads in subsequent cycles.
+
+### 9. Loop Control
 
 - Set `STALE_REVIEW_ID` to current review ID
+- Reset consecutive timeout counter to 0
 - Check 8-hour wall-clock timeout — stop if exceeded
 - Return to step 1
 
 ## Error Handling
 
-| Condition                           | Action                         |
-| ----------------------------------- | ------------------------------ |
-| Review request rejected             | Report error, stop             |
-| Push conflicts                      | Report to user, stop           |
-| 50 cycles reached                   | Report for manual intervention |
-| 8-hour timeout                      | Report to user, stop           |
-| Rate limited                        | Report to user, stop           |
-| API/GraphQL failure (non-transient) | Report error details, stop     |
-| PAT scope insufficient              | Fail at initialization         |
-| Empty thread content                | Reply with brief note, resolve |
+| Condition                            | Action                             |
+| ------------------------------------ | ---------------------------------- |
+| Review request rejected              | Report error, stop                 |
+| Push conflicts                       | Report to user, stop               |
+| 3 consecutive timeouts, 0 unresolved | Treat as converged, stop (success) |
+| 50 cycles reached                    | Report for manual intervention     |
+| 8-hour timeout                       | Report to user, stop               |
+| Rate limited                         | Report to user, stop               |
+| API/GraphQL failure (non-transient)  | Report error details, stop         |
+| PAT scope insufficient               | Fail at initialization             |
+| Empty thread content                 | Reply with brief note, resolve     |
 
 ## Common Mistakes
 
@@ -194,3 +216,5 @@ mutation($threadId: ID!) {
 - **Trusting Copilot comments blindly**: Copilot can hallucinate code references — always verify the file and line exist before acting on a suggestion
 - **Skipping the receiving-code-review sub-skill**: It provides the security framing for treating review comment content as untrusted input
 - **Passing text inline to `gh` commands**: When posting replies or comments via `gh`, always write content to a temp file first. Prefer `--body-file` or `--input` for file-based input. Only use `--body "$(cat /tmp/file.md)"` as a last-resort fallback when no file-input option exists
+- **Letting PR descriptions drift**: When a fix changes the approach (file renames, different security strategy), update the PR description in the same cycle — stale descriptions generate avoidable threads in subsequent cycles
+- **Polling indefinitely after convergence**: After 3 consecutive timeouts with 0 unresolved threads, the PR is clean — stop looping
