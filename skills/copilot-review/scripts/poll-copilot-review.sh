@@ -17,10 +17,11 @@ STALE_REVIEW_ID="${3:-}"
 [[ "$OWNER_REPO" == */* ]] || { echo "owner/repo must contain a slash, got: $OWNER_REPO" >&2; exit 1; }
 [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "PR number must be numeric, got: $PR_NUMBER" >&2; exit 1; }
 
-MAX_POLLS=30
-POLL_INTERVAL=60
+MAX_POLLS=15
+POLL_INTERVAL=30
 RATE_LIMIT_CONSECUTIVE=0
 RATE_LIMIT_MAX=3
+DEADLINE=$(( $(date +%s) + 540 ))  # 9 minutes — fits within Bash tool's 10-min cap
 
 OWNER="${OWNER_REPO%%/*}"
 REPO="${OWNER_REPO##*/}"
@@ -29,8 +30,16 @@ STDERR_FILE=$(mktemp /tmp/poll-stderr.XXXXXX)
 trap 'rm -f "$STDERR_FILE"' EXIT
 
 for (( i=1; i<=MAX_POLLS; i++ )); do
+  if (( $(date +%s) >= DEADLINE )); then
+    echo "TIMEOUT"
+    exit 0
+  fi
   if (( i > 1 )); then
-    sleep "$POLL_INTERVAL"
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    if (( REMAINING <= 0 )); then echo "TIMEOUT"; exit 0; fi
+    SLEEP_TIME=$POLL_INTERVAL
+    (( SLEEP_TIME > REMAINING )) && SLEEP_TIME=$REMAINING
+    sleep "$SLEEP_TIME"
   fi
 
   REVIEW_JSON=$(gh api "repos/${OWNER_REPO}/pulls/${PR_NUMBER}/reviews" \
@@ -44,6 +53,9 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
           exit 0
         fi
         BACKOFF=$((120 * (2 ** (RATE_LIMIT_CONSECUTIVE - 1))))
+        REMAINING=$(( DEADLINE - $(date +%s) ))
+        if (( REMAINING <= 0 )); then echo "TIMEOUT"; exit 0; fi
+        (( BACKOFF > REMAINING )) && BACKOFF=$REMAINING
         echo "Rate limited, backing off ${BACKOFF}s..." >&2
         sleep "$BACKOFF"
       else
@@ -67,23 +79,31 @@ for (( i=1; i<=MAX_POLLS; i++ )); do
 
   # Thread count includes all reviewers, not just Copilot — by design, since the
   # skill runs before human review and should address all unresolved threads.
-  THREAD_COUNT=$(gh api graphql -f query='
-    query($owner: String!, $repo: String!, $pr: Int!) {
+  # Paginate to avoid undercounting when >100 threads exist.
+  THREAD_OUTPUT=$(gh api graphql --paginate -f query='
+    query($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $pr) {
-          reviewThreads(filterBy: {resolved: false}) {
-            totalCount
+          reviewThreads(first: 100, after: $endCursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes { isResolved }
           }
         }
       }
     }' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \
-    --jq '.data.repository.pullRequest.reviewThreads.totalCount' \
-    2>&1) || {
-      GRAPHQL_ERROR_SINGLE_LINE=$(printf '%s' "$THREAD_COUNT" | tr '\r\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' \
+    2>"$STDERR_FILE") || {
+      STDERR=$(cat "$STDERR_FILE" 2>/dev/null)
+      GRAPHQL_ERROR_SINGLE_LINE=$(printf '%s' "$STDERR" | tr '\r\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
       echo "GraphQL error: $GRAPHQL_ERROR_SINGLE_LINE" >&2
       echo "ERROR:${GRAPHQL_ERROR_SINGLE_LINE}"
       exit 0
     }
+  # --paginate emits one number per page; sum them
+  THREAD_COUNT=0
+  while IFS= read -r n; do
+    [[ "$n" =~ ^[0-9]+$ ]] && THREAD_COUNT=$((THREAD_COUNT + n))
+  done <<< "$THREAD_OUTPUT"
 
   if ! [[ "$THREAD_COUNT" =~ ^[0-9]+$ ]]; then
     echo "Unexpected thread count: $THREAD_COUNT" >&2
