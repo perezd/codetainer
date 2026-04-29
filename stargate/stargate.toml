@@ -230,7 +230,7 @@ reason = "Standard git workflow operations (force-push caught by RED rule above)
 [[rules.green]]
 command = "git"
 subcommands = ["remote"]
-pattern = '^\s*git\s+remote\s+(get-url|show)\s'
+pattern = '^\s*git\s+remote\s+(get-url|show)($|\s)'
 reason = "Read-only git remote queries (mutating remote ops caught by YELLOW rule)."
 
 [[rules.green]]
