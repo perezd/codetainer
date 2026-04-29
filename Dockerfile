@@ -79,11 +79,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Stargate — bash command classifier for AI coding agents
 RUN ARCH=$(dpkg --print-architecture) && \
-    STARGATE_VERSION=v0.3.0 && \
+    STARGATE_VERSION=v0.4.0 && \
     if [ "$ARCH" = "amd64" ]; then \
-      STARGATE_SHA256="f302b3257d5a020892c339ce635df040fee505b25083a3a203ddcf1f54b3b748"; \
+      STARGATE_SHA256="f2295faa00daa4cb0b0c9253e9f051caa41075f87e5f766744f9f8b7e347bf8b"; \
     elif [ "$ARCH" = "arm64" ]; then \
-      STARGATE_SHA256="012ca794bb736c01ce6d77a1c96b42d1ffdd780c7963ca1bdb790cbafdc75fd4"; \
+      STARGATE_SHA256="78045d299f8c3aebe70d70a173a242f702b1cb8be4f13b850352894da2379158"; \
     else \
       echo "Unsupported architecture: $ARCH" >&2; exit 1; \
     fi && \
