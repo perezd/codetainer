@@ -7,13 +7,18 @@
 
 [server]
 listen = "127.0.0.1:9099"
+# timeout = "10s"
 
 [parser]
 dialect = "bash"
+# resolve_aliases = false
 
 [classifier]
 default_decision = "yellow"
+# default_llm_review = true
 unresolvable_expansion = "yellow"
+# max_ast_depth = 64
+# max_command_length = 65536
 
 # ---------------------------------------------------------------------------
 # Scopes — Operator-defined trust boundaries
@@ -176,6 +181,12 @@ commands = ["base64", "xxd", "openssl"]
 context = "pipeline_sink"
 reason = "Encoded payload execution patterns."
 
+# --- Guardrail introspection ---
+
+[[rules.red]]
+command = "stargate"
+reason = "Agents must not introspect their own guardrails. Debug stargate via SSH, not through the agent."
+
 # --- Process tracing ---
 
 [[rules.red]]
@@ -197,12 +208,6 @@ command = "docker"
 subcommands = ["run"]
 flags = ["--privileged"]
 reason = "Privileged container — full host access."
-
-# --- Guardrail introspection ---
-
-[[rules.red]]
-command = "stargate"
-reason = "Agents must not introspect their own guardrails."
 
 # --- Codetainer-specific: credential file protection ---
 
@@ -227,6 +232,8 @@ command = "git"
 subcommands = ["add", "commit", "checkout", "switch", "merge", "rebase", "pull", "push", "worktree"]
 reason = "Standard git workflow operations (force-push caught by RED rule above)."
 
+# --- Codetainer-specific: read-only git remote queries ---
+
 [[rules.green]]
 command = "git"
 subcommands = ["remote"]
@@ -243,6 +250,11 @@ reason = "Read-only filesystem, text inspection, and output utilities."
 command = "sed"
 exclude_flags = ["-i", "--in-place"]
 reason = "Stream editor without in-place modification (sed -i caught by YELLOW rule with LLM review)."
+
+[[rules.green]]
+commands = ["bash", "sh", "zsh", "dash"]
+flags = ["-n", "--noexec"]
+reason = "Shell syntax check only — parses but never executes."
 
 [[rules.green]]
 commands = ["cd", "pwd", "pushd", "popd", "dirs"]
@@ -268,6 +280,8 @@ reason = "Safe npm subcommands."
 command = "bun"
 subcommands = ["test", "run", "build", "init"]
 reason = "Safe bun subcommands."
+
+# --- Codetainer-specific: bunx prettier ---
 
 [[rules.green]]
 command = "bunx"
@@ -301,19 +315,14 @@ subcommands = ["ps", "images", "logs", "inspect", "stats", "top", "port"]
 reason = "Read-only Docker operations."
 
 [[rules.green]]
-commands = ["date", "cal", "printenv", "uname", "hostname", "id", "whoami"]
+commands = ["date", "cal", "uname", "hostname", "id", "whoami"]
 reason = "System info queries (read-only)."
 
 [[rules.green]]
 commands = ["mkdir", "touch"]
 reason = "Directory and file creation."
 
-[[rules.green]]
-commands = ["bash", "sh", "zsh", "dash"]
-flags = ["-n", "--noexec"]
-reason = "Syntax check only — parses but does not execute."
-
-# --- Copilot review skill scripts ---
+# --- Codetainer-specific: copilot review skill scripts ---
 
 [[rules.green]]
 pattern = '^(bash\s+)?/home/claude/\.claude/skills/copilot-review/scripts/poll-copilot-review\.sh(\s|$)'
@@ -481,6 +490,11 @@ reason = "Trap handlers execute strings as commands."
 command = "env"
 llm_review = true
 reason = "env can execute commands and modify environment (PATH, LD_PRELOAD)."
+
+[[rules.yellow]]
+command = "printenv"
+llm_review = true
+reason = "printenv reveals environment variable values and can expose secrets; the no-argument form is especially risky as it dumps the full environment."
 
 [[rules.yellow]]
 commands = ["export", "unset"]
