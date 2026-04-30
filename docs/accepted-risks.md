@@ -130,6 +130,15 @@ Each entry includes: risk title, affected layer(s), why it can't be resolved, co
 - **Severity:** Medium
 - **Date identified:** 2026-04-29 (pre-existing risk, formally documented during panel review of #92)
 
+### Third-party binary authenticity relies on SHA256 integrity only
+
+- **Affected layer:** Command Control
+- **Description:** Stargate is distributed as a pre-built binary from GitHub Releases. Checksums are pinned in the Dockerfile and verified at build time via `sha256sum -c`. However, no cryptographic signature (cosign, GPG) or build provenance attestation (SLSA) is available from upstream. Authenticity relies on: (1) HTTPS transport from GitHub, (2) hardcoded SHA256 in the Dockerfile acting as a trust anchor independent of the release page. This also applies to other binaries in the Dockerfile (CoreDNS, just, glow, Fly CLI) which lack even SHA256 pinning.
+- **Why it can't be resolved:** Upstream (`limbic-systems/stargate`) does not currently provide signed releases or SLSA attestations. Adopting signature verification requires upstream changes.
+- **Compensating controls:** SHA256 checksums are hardcoded in the Dockerfile (not fetched at build time), providing integrity verification independent of the release page. The checksums are reviewed in PRs before merge. The binary runs de-privileged (not as root) and is further constrained by the read-only rootfs. If upstream adds cosign or GPG signing, adopt it.
+- **Severity:** Low
+- **Date identified:** 2026-04-30 (pre-existing risk, formally documented during panel review of Stargate v0.5.1 upgrade)
+
 ---
 
 ## Resolved Risks
