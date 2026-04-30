@@ -108,7 +108,7 @@ RUN cp -L /home/claude/.bun/bin/bun /usr/local/bin/bun \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g typescript typescript-language-server
+    && npm install -g typescript typescript-language-server prettier
 
 # gopls v0.21.1 (Go language server — pinned version, requires Go 1.25+)
 RUN GOBIN=/usr/local/go/bin GOPATH=/tmp/gobuild GOCACHE=/tmp/gobuild/cache go install golang.org/x/tools/gopls@v0.21.1 \
