@@ -96,10 +96,7 @@ Behavioral policies are distributed across three locations. Auditors and reviewe
 
 ### Commands
 
-```
-bunx prettier --check "**/*.{ts,md}" # Check formatting
-bunx prettier --write "**/*.{ts,md}" # Fix formatting
-```
+File formatting is handled automatically by a PostToolUse hook (fires after every Edit/Write). No manual formatting step is needed.
 
 Container builds are manual. Never build or push Docker images.
 
