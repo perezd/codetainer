@@ -101,14 +101,6 @@ All commit messages follow the conventional commits standard:
   - `docs: update accepted risks registry`
 - Describe the "why" not just the "what."
 
-### Formatting
-
-For projects using Bun or TypeScript:
-
-Run `bunx prettier --write "**/*.{ts,md}"` on all TypeScript and Markdown files before committing. Run `bunx prettier --check "**/*.{ts,md}"` to verify.
-
-When dispatching subagents that modify TypeScript or Markdown files, include an explicit `bunx prettier --check "**/*.{ts,md}"` step in the task description. The check must cover all modified files — not just the primary target — and run after implementation, before the subagent reports completion.
-
 ---
 
 ## Issue-Driven Workflow Gate
