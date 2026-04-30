@@ -19,7 +19,7 @@ while IFS=$'\t' read -r pattern command; do
     [[ -z "$pattern" || "$pattern" == \#* ]] && continue
     if [[ "$real_path" =~ $pattern ]]; then
         IFS=' ' read -ra cmd_parts <<< "$command"
-        "${cmd_parts[@]}" "$real_path" || true
+        "${cmd_parts[@]}" "$real_path" || echo "[format-hook] ${cmd_parts[0]} failed on $(basename "$real_path")" >&2
         exit 0
     fi
 done < "$CONFIG"
