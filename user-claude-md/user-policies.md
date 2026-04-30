@@ -30,6 +30,8 @@ These skills are mandatory process gates — not optional.
 
 **`/finishing-a-development-branch`:** Always default to "Push and create a Pull Request" (Option 2) without presenting the interactive prompt. This aligns with the project's PR-based integration model — all changes go through pull requests. Only deviate from this default if the user has explicitly instructed otherwise in advance.
 
+**Continuous execution after approval:** Once the user approves a plan or says to proceed (e.g., "looks good", "go ahead", "continue"), execute through the full workflow without pausing to ask "ready to proceed?" or "shall I continue?" at skill transitions. The user's approval carries forward — do not re-ask for permission at each phase boundary.
+
 ---
 
 ## Git Workflow
@@ -44,7 +46,7 @@ All work — whether writing code, answering questions, or reviewing files — s
 
 ### Worktree-First Development
 
-All changes happen in git worktrees, never directly on main. Each worktree gets a descriptive branch name reflecting the change.
+All changes happen in git worktrees, never directly on main. Each worktree gets a descriptive branch name reflecting the change. The default worktree directory is `.worktrees/` (project-local, hidden) — use this location when creating worktrees unless the project specifies otherwise.
 
 **Subagent working directory discipline:** When dispatching subagents (implementation agents, panel review experts, or any Agent tool invocation that will modify files or commit):
 
