@@ -153,12 +153,14 @@ COPY stargate/stargate.toml /opt/stargate/stargate.toml.template
 COPY scripts/generate-stargate-config.sh /usr/local/bin/generate-stargate-config.sh
 RUN chmod +x /usr/local/bin/generate-stargate-config.sh
 
-# Claude settings template, statusline, and session namer
+# Claude settings template, statusline, session namer, and formatter hook
 COPY claude-settings.json /opt/claude/settings.json
 COPY scripts/statusline-command.sh /opt/claude/statusline-command.sh
 COPY scripts/session-namer.sh /opt/claude/session-namer.sh
 COPY scripts/sync-fork.sh /opt/claude/sync-fork.sh
-RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh /opt/claude/sync-fork.sh
+COPY scripts/format-file.sh /opt/claude/format-file.sh
+COPY formatters.conf /opt/claude/formatters.conf
+RUN chmod +x /opt/claude/statusline-command.sh /opt/claude/session-namer.sh /opt/claude/sync-fork.sh /opt/claude/format-file.sh
 
 # Skills (user-scoped, copied to claude's home at boot)
 COPY skills/ /opt/claude/skills/
