@@ -46,6 +46,16 @@
             "timeout": 10000
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/claude/format-file.sh",
+            "timeout": 10000
+          }
+        ]
       }
     ],
     "Stop": [
