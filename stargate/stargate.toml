@@ -216,6 +216,12 @@ command = "cat"
 args = ["/opt/gh-config/.ghtoken", "/opt/gh-config/*"]
 reason = "Direct read of credential file."
 
+# --- Codetainer-specific: process environment file protection ---
+
+[[rules.red]]
+pattern = '/proc/[0-9a-z]*/environ'
+reason = "Reading process environment files exposes all env vars including credentials."
+
 # === GREEN Rules (always allow) ===========================================
 
 [[rules.green]]
@@ -285,7 +291,7 @@ reason = "Safe bun subcommands."
 
 [[rules.green]]
 command = "bunx"
-pattern = '^bunx\s+prettier\s'
+pattern = '^bunx\s+prettier(\s|$)'
 reason = "Prettier formatting via bunx."
 
 [[rules.green]]
